@@ -28,7 +28,7 @@ cmake_minimum_required(VERSION 3.0)
 project(sx)
 
 # Enable Assembler
-if (MSVC)
+if (MSVC AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
     enable_language(CXX ASM_MASM)
 else()
     enable_language(CXX ASM)
@@ -39,7 +39,6 @@ set(SOURCE_FILES src/sx.c
                  src/threads.c
                  src/lin-alloc.c
                  src/hash.c
-                 src/stack-alloc.c
                  src/os.c 
                  src/string.c
                  src/io.c
@@ -66,7 +65,6 @@ set(INCLUDE_FILES ../../include/sx/allocator.h
                   ../../include/sx/threads.h
                   ../../include/sx/lin-alloc.h
                   ../../include/sx/hash.h
-                  ../../include/sx/stack-alloc.h
                   ../../include/sx/os.h 
                   ../../include/sx/string.h
                   ../../include/sx/handle.h
@@ -78,7 +76,11 @@ set(INCLUDE_FILES ../../include/sx/allocator.h
                   ../../include/sx/ini.h
                   ../../include/sx/vmem.h 
                   ../../include/sx/fiber.h
-                  ../../include/sx/math.h
+                  ../../include/sx/math-types.h 
+                  ../../include/sx/math-scalar.h 
+                  ../../include/sx/math-vec.h 
+                  ../../include/sx/math-easing.h 
+                  ../../include/sx/math.h 
                   ../../include/sx/jobs.h
                   ../../include/sx/bheap.h
                   ../../include/sx/simd.h
@@ -121,7 +123,7 @@ elseif (UNIX)
     else()
         set(CPU_ARCH "i386")
     endif()
-    set(ASM_EXT "sysv_elf_gas.S") 
+    set(ASM_EXT "sysv_elf_gas.S")
 elseif (WIN32)
     # Windows (x86/64)
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -129,7 +131,14 @@ elseif (WIN32)
     else()
         set(CPU_ARCH "i386")
     endif()
-    set(ASM_EXT "ms_pe_masm.asm")
+
+    if (CMAKE_C_COMPILER_ID MATCHES "Clang")
+        set(ASM_EXT "ms_pe_clang_gas.S")
+    elseif (MSVC)
+        set(ASM_EXT "ms_pe_masm.asm")
+    elseif (CMAKE_C_COMPILER_ID MATCHES "GNU")
+        set(ASM_EXT "ms_pe_gas.S")
+    endif()
 endif()
 
 set(ASM_SOURCES "asm/make_${CPU_ARCH}_${ASM_EXT}"
@@ -140,6 +149,13 @@ if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
 endif()
 set_source_files_properties(${ASM_SOURCES} PROPERTIES COMPILE_DEFINITIONS BOOST_CONTEXT_EXPORT=)
 
+if (MSVC)
+    # FIXME: due to some bug in msvc or cmake, I have to set this for all sources
+    if (${MSVC_VERSION} GREATER_EQUAL 1928)
+        set_source_files_properties(${SOURCE_FILES} PROPERTIES COMPILE_OPTIONS /std:c17)
+    endif() 
+endif()
+
 if (EMSCRIPTEN) 
     unset(ASM_SOURCES)
 endif()
@@ -148,7 +164,7 @@ endif()
 add_library(sx ${SOURCE_FILES} ${INCLUDE_FILES} ${ASM_SOURCES})
 
 # compat files include dir
-if (MSVC)
+if (WIN32)
     set(COMPAT_DIR ../../include/compat/msvc)
 elseif(APPLE)
     if (IOS)
@@ -159,6 +175,7 @@ elseif(APPLE)
 endif()
 
 target_include_directories(sx PUBLIC ../../include ${COMPAT_DIR})
+target_include_directories(sx INTERFACE 3rdparty)
 
 if (ANDROID)
     include(AndroidNdkModules)
@@ -175,4 +192,6 @@ if (SX_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# we don't want obsolete code in sx
+target_compile_definitions(sx PUBLIC SX_CONFIG_OBSOLETE_CODE=0)
 

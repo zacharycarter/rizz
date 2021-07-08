@@ -4,58 +4,11 @@
 //
 #include "sx/hash.h"
 #include "sx/allocator.h"
+#include "sx/math-scalar.h"
 
-// https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-static inline SX_CONSTFN int sx__nearest_pow2(int n)
-{
-    n--;
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n++;
-    return n;
-}
-
-static inline SX_CONSTFN bool sx__ispow2(int n)
+static inline SX_ALLOW_UNUSED SX_CONSTFN bool sx__ispow2(int n)
 {
     return (n & (n - 1)) == 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-uint32_t sx_hash_u32(uint32_t key)
-{
-    const uint32_t c2 = 0x27d4eb2d;    // a prime or an odd constant
-    key = (key ^ 61) ^ (key >> 16);
-    key = key + (key << 3);
-    key = key ^ (key >> 4);
-    key = key * c2;
-    key = key ^ (key >> 15);
-    return key;
-}
-
-uint64_t sx_hash_u64(uint64_t key)
-{
-    key = (~key) + (key << 21);    // key = (key << 21) - key - 1;
-    key = key ^ (key >> 24);
-    key = (key + (key << 3)) + (key << 8);    // key * 265
-    key = key ^ (key >> 14);
-    key = (key + (key << 2)) + (key << 4);    // key * 21
-    key = key ^ (key >> 28);
-    key = key + (key << 31);
-    return key;
-}
-
-uint32_t sx_hash_u64_to_u32(uint64_t key)
-{
-    key = (~key) + (key << 18);
-    key = key ^ (key >> 31);
-    key = key * 21;
-    key = key ^ (key >> 11);
-    key = key + (key << 6);
-    key = key ^ (key >> 22);
-    return (uint32_t)key;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -127,39 +80,6 @@ uint64_t sx_hash_xxh64_digest(sx_hash_xxh64_t* state)
 {
     XXH64_state_t* xstate = (XXH64_state_t*)state;
     return XXH64_digest(xstate);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// FNV1a
-// http://www.isthe.com/chongo/src/fnv/hash_32a.c
-
-#define FNV1_32_INIT 0x811c9dc5
-#define FNV1_32_PRIME 0x01000193
-uint32_t sx_hash_fnv32(const void* data, size_t len)
-{
-    const char* bp = (const char*)data;
-    const char* be = bp + len;
-
-    uint32_t hval = FNV1_32_INIT;
-    while (bp < be) {
-        hval ^= (uint32_t)*bp++;
-        hval *= FNV1_32_PRIME;
-    }
-
-    return hval;
-}
-
-uint32_t sx_hash_fnv32_str(const char* str)
-{
-    const char* s = str;
-
-    uint32_t hval = FNV1_32_INIT;
-    while (*s) {
-        hval ^= (uint32_t)*s++;
-        hval *= FNV1_32_PRIME;
-    }
-
-    return hval;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -277,7 +197,7 @@ sx_hashtbl* sx_hashtbl_create(const sx_alloc* alloc, int capacity)
 {
     sx_assert(capacity > 0);
 
-    capacity = sx__nearest_pow2(capacity);
+    capacity = sx_nearest_pow2(capacity);
     sx_hashtbl* tbl = (sx_hashtbl*)sx_malloc(
         alloc, sizeof(sx_hashtbl) + capacity * (sizeof(uint32_t) + sizeof(int)) +
                    SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT);
@@ -304,9 +224,10 @@ sx_hashtbl* sx_hashtbl_create(const sx_alloc* alloc, int capacity)
 
 void sx_hashtbl_destroy(sx_hashtbl* tbl, const sx_alloc* alloc)
 {
-    sx_assert(tbl);
-    tbl->count = tbl->capacity = 0;
-    sx_free(alloc, tbl);
+    if (tbl) {
+        tbl->count = tbl->capacity = 0;
+        sx_free(alloc, tbl);
+    }
 }
 
 bool sx_hashtbl_grow(sx_hashtbl** ptbl, const sx_alloc* alloc)
@@ -329,7 +250,7 @@ bool sx_hashtbl_grow(sx_hashtbl** ptbl, const sx_alloc* alloc)
 
 void sx_hashtbl_init(sx_hashtbl* tbl, int capacity, uint32_t* keys_ptr, int* values_ptr)
 {
-    sx_assert(sx__ispow2(capacity) &&
+    sx_assertf(sx__ispow2(capacity),
               "Table size must be power of 2, get it from sx_hashtbl_valid_capacity");
 
     sx_memset(keys_ptr, 0x0, capacity * sizeof(uint32_t));
@@ -354,7 +275,7 @@ int sx_hashtbl_fixed_size(int capacity)
 
 int sx_hashtbl_valid_capacity(int capacity)
 {
-    return sx__nearest_pow2(capacity);
+    return sx_nearest_pow2(capacity);
 }
 
 int sx_hashtbl_add(sx_hashtbl* tbl, uint32_t key, int value)
@@ -410,7 +331,7 @@ sx_hashtbl_tval* sx_hashtbltval_create(const sx_alloc* alloc, int capacity, int 
 {
     sx_assert(capacity > 0);
 
-    capacity = sx__nearest_pow2(capacity);
+    capacity = sx_nearest_pow2(capacity);
     sx_hashtbl_tval* tbl = (sx_hashtbl_tval*)sx_malloc(
         alloc, sizeof(sx_hashtbl_tval) + capacity * (sizeof(uint32_t) + value_stride) +
                    SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT);
@@ -465,7 +386,7 @@ bool sx_hashtbltval_grow(sx_hashtbl_tval** ptbl, const sx_alloc* alloc)
 
 void sx_hashtbltval_init(sx_hashtbl_tval* tbl, int capacity, int value_stride, uint32_t* keys_ptr, void* values_ptr)
 {
-    sx_assert(sx__ispow2(capacity) &&
+    sx_assertf(sx__ispow2(capacity),
               "Table size must be power of 2, get it from sx_hashtbltval_valid_capacity");
 
     sx_memset(keys_ptr, 0x0, capacity * sizeof(uint32_t));
@@ -491,7 +412,7 @@ int sx_hashtbltval_fixed_size(int capacity, int value_stride)
 
 int sx_hashtbltval_valid_capacity(int capacity)
 {
-    return sx__nearest_pow2(capacity);
+    return sx_nearest_pow2(capacity);
 }
 
 int sx_hashtbltval_add(sx_hashtbl_tval* tbl, uint32_t key, const void* value)

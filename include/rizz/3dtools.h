@@ -2,46 +2,35 @@
 
 #include "rizz/rizz.h"
 
+typedef struct rizz_material_lib rizz_material_lib;
+typedef struct rizz_shader_lib rizz_shader_lib;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// @prims3d
-typedef struct rizz_prims3d_vertex {
+// @debug3d
+typedef struct rizz_3d_debug_vertex {
     sx_vec3 pos;
     sx_vec3 normal;
     sx_vec2 uv;
     sx_color color;
-} rizz_prims3d_vertex;
+} rizz_3d_debug_vertex;
 
-typedef enum rizz_prims3d_map_type {
-    RIZZ_PRIMS3D_MAPTYPE_WHITE = 0,
-    RIZZ_PRIMS3D_MAPTYPE_CHECKER
-} rizz_prims3d_map_type;
+typedef enum rizz_3d_debug_map_type {
+    RIZZ_3D_DEBUG_MAPTYPE_WHITE = 0,
+    RIZZ_3D_DEBUG_MAPTYPE_CHECKER
+} rizz_3d_debug_map_type;
 
 // all generated geometry are in index based triangles (3 indices = tri)
-typedef struct rizz_prims3d_geometry {
-    rizz_prims3d_vertex* verts;
+typedef struct rizz_3d_debug_geometry {
+    rizz_3d_debug_vertex* verts;
     uint16_t* indices;
     int num_verts;
     int num_indices;
-} rizz_prims3d_geometry;
+} rizz_3d_debug_geometry;
 
-typedef struct rizz_api_prims3d {
-    // boxes are drawn solid. when drawing mutiple boxes, don't mix alpha/solid color tints
-    void (*draw_box)(const sx_box* box, const sx_mat4* viewproj_mat, rizz_prims3d_map_type map_type,
-                     sx_color tint);
-    void (*draw_boxes)(const sx_box* boxes, int num_boxes, const sx_mat4* viewproj_mat,
-                       rizz_prims3d_map_type map_type, const sx_color* tints);
-    bool (*generate_box_geometry)(const sx_alloc* alloc, rizz_prims3d_geometry* geo);
-    void (*free_geometry)(rizz_prims3d_geometry* geo, const sx_alloc* alloc);
-
-    // aabbs are always wireframe. and alpha in color tint doesn't affect them
-    void (*draw_aabb)(const sx_aabb* aabb, const sx_mat4* viewproj_mat, sx_color tint);
-    void (*draw_aabbs)(const sx_aabb* aabbs, int num_aabbs, const sx_mat4* viewproj_mat, const sx_color* tints);
-
-    void (*grid_xzplane)(float spacing, float spacing_bold, const sx_mat4* viewproj_mat, const sx_vec3 frustum[8]);
-    void (*grid_xyplane)(float spacing, float spacing_bold, const sx_mat4* viewproj_mat, const sx_vec3 frustum[8]);
-    void (*grid_xyplane_cam)(float spacing, float spacing_bold, float dist, const rizz_camera* cam, 
-                             const sx_mat4* viewproj_mat);    
-} rizz_api_prims3d;
+typedef struct rizz_3d_debug_line {
+    sx_vec3 p0;
+    sx_vec3 p1;
+} rizz_3d_debug_line;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // @material
@@ -185,6 +174,9 @@ typedef struct rizz_model_mesh {
     struct gpu_t {
         sg_buffer vbuffs[SG_MAX_SHADERSTAGE_BUFFERS];
         sg_buffer ibuff;
+
+        uint32_t  _vbuff_name_hdls[SG_MAX_SHADERSTAGE_BUFFERS];
+        uint32_t  _ibuff_name_hdl;
     } gpu;
 } rizz_model_mesh;
 
@@ -208,10 +200,80 @@ typedef struct rizz_model {
     rizz_model_node* nodes;
     rizz_model_mesh* meshes;
     rizz_model_geometry_layout layout;
+
+    rizz_material_lib* mtllib;
 } rizz_model;
 
-typedef struct rizz_api_model {
-    const rizz_model* (*model_get)(rizz_asset model_asset);
-    const rizz_material_data* (*material_get)(rizz_material mtl);
-} rizz_api_model;
+typedef struct rizz_api_3d 
+{
+    struct {
+        // boxes are drawn solid. when drawing mutiple boxes, don't mix alpha/solid color tints
+        void (*draw_box)(const sx_box* box, const sx_mat4* viewproj_mat, rizz_3d_debug_map_type map_type,
+                         sx_color tint);
+        void (*draw_boxes)(const sx_box* boxes, int num_boxes, const sx_mat4* viewproj_mat,
+                           rizz_3d_debug_map_type map_type, const sx_color* tints);
+        void (*draw_sphere)(sx_vec3 center, float radius, const sx_mat4* viewproj_mat,
+                            rizz_3d_debug_map_type map_type, sx_color tint);
+        void (*draw_spheres)(const sx_vec3* centers, const float* radiuss, int count, 
+                             const sx_mat4* viewproj_mat, rizz_3d_debug_map_type map_type, 
+                             const sx_color* tints);
+        void (*draw_cones)(const float* radiuss, const float* depths, const sx_tx3d* txs, int count,
+                           const sx_mat4* viewproj_mat, const sx_color* tints);
+        void (*draw_cone)(float radius, float depth, const sx_tx3d* tx, const sx_mat4* viewproj_mat, 
+                          sx_color tint);
 
+        // coordinate system: right-handed Z-up, winding: CW
+        bool (*generate_box_geometry)(const sx_alloc* alloc, rizz_3d_debug_geometry* geo, sx_vec3 extents);
+        bool (*generate_sphere_geometry)(const sx_alloc* alloc, rizz_3d_debug_geometry* geo,
+                                           float radius, int num_segments, int num_rings);
+        bool (*generate_cone_geometry)(const sx_alloc* alloc, rizz_3d_debug_geometry* geo, 
+                                       int num_segments, float radius1, float radius2, float depth);
+        void (*free_geometry)(rizz_3d_debug_geometry* geo, const sx_alloc* alloc);
+
+        // aabbs are always wireframe. and alpha in color tint doesn't affect them
+        void (*draw_aabb)(const sx_aabb* aabb, const sx_mat4* viewproj_mat, sx_color tint);
+        void (*draw_aabbs)(const sx_aabb* aabbs, int num_aabbs, const sx_mat4* viewproj_mat, const sx_color* tints);
+
+        void (*grid_xzplane)(float spacing, float spacing_bold, const sx_mat4* viewproj_mat, const sx_vec3 frustum[8]);
+        void (*grid_xyplane)(float spacing, float spacing_bold, const sx_mat4* viewproj_mat, const sx_vec3 frustum[8]);
+        void (*grid_xyplane_cam)(float spacing, float spacing_bold, float dist, const rizz_camera* cam, const sx_mat4* viewproj_mat);
+
+        void (*draw_path)(const sx_vec3* points, int num_points, const sx_mat4* viewproj_mat, const sx_color color);
+
+        void (*draw_line)(const sx_vec3 p0, const sx_vec3 p1, const sx_mat4* viewproj_mat, const sx_color color);
+        void (*draw_lines)(int num_lines, const rizz_3d_debug_line* lines, const sx_mat4* viewproj_mat, const sx_color* colors);
+        void (*draw_axis)(const sx_mat4* mat, const sx_mat4* viewproj_mat, float scale);
+        void (*draw_camera)(const rizz_camera* cam, const sx_mat4* viewproj_mat);
+
+        void (*set_draw_api)(rizz_api_gfx_draw* draw_api);
+        void (*set_max_instances)(int max_instances);
+        void (*set_max_vertices)(int max_verts);
+        void (*set_max_indices)(int max_indices);
+    } debug;
+
+    struct {
+        const rizz_model* (*get)(rizz_asset model_asset);
+        void (*set_material_lib)(rizz_material_lib* mtllib);
+    } model;
+
+    struct {
+        rizz_material_lib* (*create_lib)(const sx_alloc* alloc, int init_capacity);
+        void (*destroy_lib)(rizz_material_lib* lib);
+        rizz_material (*add)(rizz_material_lib* lib, const rizz_material_data* mdata);
+        const rizz_material_data* (*get_data)(const rizz_material_lib* lib, rizz_material mtl);
+        rizz_material (*get_blank)(const rizz_material_lib* lib);
+    } material;
+
+    struct {
+        rizz_shader_lib* (*create_lib)(const sx_alloc* alloc);
+        void (*destroy_lib)(rizz_shader_lib* lib);
+
+        bool (*load)(rizz_shader_lib* lib, const char* sgs_filepath, const sx_alloc* alloc, 
+                     uint32_t stage, uint32_t permutations, const void* user);
+        bool (*load_with_pipeline)(rizz_shader_lib* lib, const char* sgs_filepath, 
+                                   sg_pipeline_desc* pip_desc, const rizz_vertex_layout* vlayout,
+                                   const sx_alloc* alloc, uint32_t stage, uint32_t permutations, const void* user);
+        sg_pipeline (*get_pipeline)(const rizz_shader_lib* lib, uint32_t stage, uint32_t permutations, const void** puser);
+        rizz_asset (*get_shader)(const rizz_shader_lib* lib, uint32_t stage, uint32_t permutations, const void** puser);
+    } shader;
+} rizz_api_3d;

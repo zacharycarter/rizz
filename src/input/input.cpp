@@ -83,6 +83,41 @@ struct input__device_info {
     const char* name;
 };
 
+class input__gainput_listener : public gainput::InputListener {
+  private:
+    rizz_input_callbacks m_callbacks;
+    void* m_user;
+    int m_priority;
+
+  public:
+    gainput::ListenerId m_id = 0;
+
+    input__gainput_listener() = delete;
+    input__gainput_listener(const input__gainput_listener&) = delete;
+
+    explicit input__gainput_listener(const rizz_input_callbacks* callbacks, void* user, int priority)
+    {
+        m_callbacks = *callbacks;
+        m_user = user;
+        m_priority = priority;
+    }
+
+    bool OnDeviceButtonBool(DeviceId device, DeviceButtonId deviceButton, bool oldValue, bool newValue) override
+    {
+        return m_callbacks.on_bool({rizz_to_id(device)}, (int)deviceButton, oldValue, newValue, m_user);
+    }
+
+	bool OnDeviceButtonFloat(DeviceId device, DeviceButtonId deviceButton, float oldValue, float newValue) override
+    {
+        return m_callbacks.on_float({rizz_to_id(device)}, (int)deviceButton, oldValue, newValue, m_user);
+    }
+
+    int GetPriority() const override
+    {
+        return m_priority;
+    }
+}; 
+
 struct input__debug_item {
     enum Type { Circle, Line, Text };
 
@@ -119,8 +154,9 @@ struct input__context {
     ga_allocator ga_alloc;
     InputManager* mgr;
     InputMap* mapper;
-    input__device_info* devices;       // sx_array
-    input__debug_item* debug_items;    // sx_array
+    input__device_info* devices;           // sx_array
+    input__debug_item* debug_items;        // sx_array
+    input__gainput_listener* listeners;    // sx_array
     bool debugger;
 };
 
@@ -174,16 +210,14 @@ static bool input__init()
 {
     g_input_alloc = the_core->alloc(RIZZ_MEMID_INPUT);
 
-    g_input.mgr =
-        new (sx_malloc(g_input_alloc, sizeof(InputManager))) InputManager(false, g_input.ga_alloc);
+    g_input.mgr = sx_new(g_input_alloc, InputManager)(false, g_input.ga_alloc);
     if (!g_input.mgr) {
         sx_out_of_memory();
         return false;
     }
     g_input.mgr->SetDisplaySize(the_app->width(), the_app->height());
 
-    g_input.mapper = new (sx_malloc(g_input_alloc, sizeof(InputMap)))
-        InputMap(*g_input.mgr, "rizz_input_map", g_input.ga_alloc);
+    g_input.mapper = sx_new(g_input_alloc, InputMap)(*g_input.mgr, "rizz_input_map", g_input.ga_alloc);
     if (!g_input.mapper) {
         sx_out_of_memory();
         return false;
@@ -194,16 +228,9 @@ static bool input__init()
 
 static void input__release()
 {
-    if (g_input.mapper) {
-        g_input.mapper->~InputMap();
-        sx_free(g_input_alloc, g_input.mapper);
-    }
-
-    if (g_input.mgr) {
-        g_input.mgr->~InputManager();
-        sx_free(g_input_alloc, g_input.mgr);
-    }
-
+    sx_array_free(g_input_alloc, g_input.listeners);
+    sx_delete(g_input_alloc, InputMap, g_input.mapper);
+    sx_delete(g_input_alloc, InputManager, g_input.mgr);
     sx_array_free(g_input_alloc, g_input.devices);
     sx_array_free(g_input_alloc, g_input.debug_items);
 }
@@ -250,11 +277,7 @@ static rizz_input_device input__create_device(rizz_input_device_type type)
 
 static void input__map_bool(rizz_input_device device, int device_key, rizz_input_userkey key)
 {
-    sx_assert(g_input.mapper);
-    sx_assert(device.id);
-
-    g_input.mapper->MapBool((UserButtonId)key, (DeviceId)rizz_to_index(device.id),
-                            (DeviceButtonId)device_key);
+    g_input.mapper->MapBool((UserButtonId)key, (DeviceId)rizz_to_index(device.id), (DeviceButtonId)device_key);
 }
 
 static void input__map_float(rizz_input_device device, int device_key, rizz_input_userkey key,
@@ -262,9 +285,6 @@ static void input__map_float(rizz_input_device device, int device_key, rizz_inpu
                              float (*filter_cb)(float const value, void* user),
                              void* filter_user_ptr)
 {
-    sx_assert(g_input.mapper);
-    sx_assert(device.id);
-
     g_input.mapper->MapFloat((UserButtonId)key, (DeviceId)rizz_to_index(device.id),
                              (DeviceButtonId)device_key, min_val, max_val, filter_cb,
                              filter_user_ptr);
@@ -300,6 +320,38 @@ static bool input__get_bool_previous(rizz_input_userkey key)
     return g_input.mapper->GetBoolPrevious((UserButtonId)key);
 }
 
+static bool input__get_bool_raw(rizz_input_device device, int device_key)
+{
+    InputDevice* input_device = g_input.mgr->GetDevice((DeviceId)rizz_to_index(device.id));
+    sx_assert(input_device);
+    return input_device->GetBool((DeviceButtonId)device_key);
+}
+
+static bool input__get_bool_pressed_raw(rizz_input_device device, int device_key)
+{
+    InputDevice* input_device = g_input.mgr->GetDevice((DeviceId)rizz_to_index(device.id));
+    sx_assert(input_device);
+    bool prev = input_device->GetBoolPrevious((DeviceButtonId)device_key);
+    bool curr = input_device->GetBool((DeviceButtonId)device_key);
+    return !prev && curr;
+}
+
+static bool input__get_bool_released_raw(rizz_input_device device, int device_key)
+{
+    InputDevice* input_device = g_input.mgr->GetDevice((DeviceId)rizz_to_index(device.id));
+    sx_assert(input_device);
+    bool prev = input_device->GetBoolPrevious((DeviceButtonId)device_key);
+    bool curr = input_device->GetBool((DeviceButtonId)device_key);
+    return prev && !curr;
+}
+
+static bool input__get_bool_previous_raw(rizz_input_device device, int device_key)
+{
+    InputDevice* input_device = g_input.mgr->GetDevice((DeviceId)rizz_to_index(device.id));
+    sx_assert(input_device);
+    return input_device->GetBoolPrevious((DeviceButtonId)device_key);
+}
+
 static float input__get_float(rizz_input_userkey key)
 {
     sx_assert(g_input.mapper);
@@ -316,6 +368,27 @@ static float input__get_float_delta(rizz_input_userkey key)
 {
     sx_assert(g_input.mapper);
     return g_input.mapper->GetFloatDelta((UserButtonId)key);
+}
+
+static float input__get_float_raw(rizz_input_device device, int device_key)
+{
+    InputDevice* input_device = g_input.mgr->GetDevice((DeviceId)rizz_to_index(device.id));
+    sx_assert(input_device);
+    return input_device->GetFloat((DeviceButtonId)device_key);
+}
+
+static float input__get_float_previous_raw(rizz_input_device device, int device_key)
+{
+    InputDevice* input_device = g_input.mgr->GetDevice((DeviceId)rizz_to_index(device.id));
+    sx_assert(input_device);
+    return input_device->GetFloatPrevious((DeviceButtonId)device_key);
+}
+
+static float input__get_float_delta_raw(rizz_input_device device, int device_key)
+{
+    InputDevice* input_device = g_input.mgr->GetDevice((DeviceId)rizz_to_index(device.id));
+    sx_assert(input_device);
+    return input_device->GetFloat((DeviceButtonId)device_key) - input_device->GetFloatPrevious((DeviceButtonId)device_key);
 }
 
 static void input__clear_mappings()
@@ -391,7 +464,7 @@ static void input__show_debugger(bool* p_open)
                     0xff00ffff, 4.0f);
                 break;
             case input__debug_item::Text:
-                the_imgui->ImDrawList_AddTextVec2(
+                the_imgui->ImDrawList_AddText_Vec2(
                     drawlist,
                     convert_debug_coords(window_size, window_pos,
                                          sx_vec2f(item.params.x, item.params.y), false),
@@ -408,7 +481,7 @@ static void input__show_debugger(bool* p_open)
         the_imgui->Columns(2, nullptr, false);
         the_imgui->SetColumnWidth(0, 150.0f);
 
-        the_imgui->BeginChildStr("input_list_parent", sx_vec2f(0, 0), true, 0);
+        the_imgui->BeginChild_Str("input_list_parent", sx_vec2f(0, 0), true, 0);
         the_imgui->Columns(3, nullptr, false);
         the_imgui->SetColumnWidth(0, 30.0f);
         the_imgui->SetColumnWidth(1, 70.0f);
@@ -420,7 +493,7 @@ static void input__show_debugger(bool* p_open)
         the_imgui->NextColumn();
         the_imgui->Columns(1, nullptr, false);
         the_imgui->Separator();
-        the_imgui->BeginChildStr("input_list",
+        the_imgui->BeginChild_Str("input_list",
                               sx_vec2f(the_imgui->GetWindowContentRegionWidth(), 150.0f), false, 0);
 
         the_imgui->Columns(3, nullptr, false);
@@ -433,8 +506,8 @@ static void input__show_debugger(bool* p_open)
         while (the_imgui->ImGuiListClipper_Step(&clipper)) {
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
                 sx_snprintf(row_str, sizeof(row_str), "%d", i + 1);
-                if (the_imgui->SelectableBool(row_str, selected_input == i,
-                                          ImGuiSelectableFlags_SpanAllColumns, SX_VEC2_ZERO)) {
+                if (the_imgui->Selectable_Bool(row_str, selected_input == i,
+                                               ImGuiSelectableFlags_SpanAllColumns, SX_VEC2_ZERO)) {
                     selected_input = i;
 
                     // turn off debugging for all devices except this one
@@ -458,7 +531,7 @@ static void input__show_debugger(bool* p_open)
                 InputDevice::DeviceState state =
                     g_input.mgr->GetDevice(rizz_to_index(g_input.devices[i].id.id))->GetState();
 
-                sx_vec4 button_color;
+                sx_vec4 button_color = SX_VEC4_ZERO;
                 switch (state) {
                 case InputDevice::DS_OK:
                     button_color = sx_vec4f(0.0f, 0.8f, 0.1f, 1.0f);
@@ -471,8 +544,7 @@ static void input__show_debugger(bool* p_open)
                     button_color = sx_vec4f(0.8f, 0.8f, 0.0f, 1.0f);
                 }
 
-                the_imgui->ColorButton("input_device_state", button_color, 0,
-                                       sx_vec2f(14.0f, 14.0f));
+                the_imgui->ColorButton("input_device_state", button_color, 0, sx_vec2f(14.0f, 14.0f));
                 the_imgui->NextColumn();
             }
         }    // while(clipper)
@@ -488,8 +560,8 @@ static void input__show_debugger(bool* p_open)
             sx_vec2 region;
             the_imgui->GetContentRegionAvail(&region);
             float w = region.x;
-            the_imgui->BeginChildStr("input_debugger_view", sx_vec2f(w, w), true,
-                                  ImGuiWindowFlags_NoScrollbar);
+            the_imgui->BeginChild_Str("input_debugger_view", sx_vec2f(w, w), true,
+                                      ImGuiWindowFlags_NoScrollbar);
             sx_vec2 view_size;
             sx_vec2 view_pos;
             the_imgui->GetWindowSize(&view_size);
@@ -506,14 +578,58 @@ static void input__show_debugger(bool* p_open)
     sx_array_clear(g_input.debug_items);
 }
 
-static rizz_api_input the__input = { input__create_device,      input__map_bool,
-                                     input__map_float,          input__unmap,
-                                     input__clear_mappings,     input__device_avail,
-                                     input__get_bool,           input__get_bool_pressed,
-                                     input__get_bool_released,  input__get_bool_previous,
-                                     input__get_float,          input__get_float_previous,
-                                     input__get_float_delta,    input__set_dead_zone,
-                                     input__set_userkey_policy, input__show_debugger };
+static rizz_input_listener input__register_listener(const rizz_input_callbacks* callbacks, 
+                                                    void* user, int priority)
+{
+    sx_assert(callbacks);
+    sx_assert(g_input.mgr);
+    void* ptr = sx_array_add(g_input_alloc, g_input.listeners, 1);
+    sx_assert_always(ptr);
+    input__gainput_listener* listener = sx_pnew(ptr, input__gainput_listener)(callbacks, user, priority);
+    gainput::ListenerId id = {g_input.mgr->AddListener(listener)};
+    listener->m_id = id;
+    return {rizz_to_id(id)};
+}
+
+static void input__unregister_listener(rizz_input_listener listener_id)
+{
+    sx_assert(listener_id.id);
+
+    gainput::ListenerId _id = rizz_to_index(listener_id.id);
+    for (int i = 0, ic = sx_array_count(g_input.listeners); i < ic; i++) {
+        if (g_input.listeners[i].m_id == _id) {
+            g_input.mgr->RemoveListener(g_input.listeners[i].m_id);
+            sx_array_pop(g_input.listeners, i);
+            break;
+        }
+    }
+}
+
+static rizz_api_input the__input = { input__create_device,
+                                     input__map_bool,
+                                     input__map_float,
+                                     input__unmap,
+                                     input__clear_mappings,
+                                     input__device_avail,
+                                     input__get_bool,
+                                     input__get_bool_pressed,
+                                     input__get_bool_released,
+                                     input__get_bool_previous,
+                                     input__get_bool_raw,
+                                     input__get_bool_pressed_raw,
+                                     input__get_bool_released_raw,
+                                     input__get_bool_previous_raw,
+                                     input__get_float,
+                                     input__get_float_previous,
+                                     input__get_float_delta,
+                                     input__get_float_raw,
+                                     input__get_float_previous_raw,
+                                     input__get_float_delta_raw,
+                                     input__set_dead_zone,
+                                     input__set_userkey_policy,
+                                     input__show_debugger,
+                                     input__register_listener,
+                                     input__unregister_listener };
 
 rizz_plugin_decl_main(input, plugin, e)
 {

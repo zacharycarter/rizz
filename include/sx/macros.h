@@ -22,6 +22,8 @@
 ///
 #define _sx_stringize(_x) #_x
 #define sx_stringize(_x) _sx_stringize(_x)
+#define _sx_concat(_a, _b) _a##_b
+#define sx_concat(_a, _b) _sx_concat(_a, _b)
 
 ///
 // Function decleration code helpers
@@ -52,9 +54,8 @@
 #endif    // defined(__has_extension)
 
 #if SX_COMPILER_GCC || SX_COMPILER_CLANG
-#    define sx_align_decl(_align, _decl) _decl __attribute__((aligned(_align)))
 #    define SX_ALLOW_UNUSED __attribute__((unused))
-#    define SX_FORCE_INLINE static inline __attribute__((__always_inline__))
+#    define SX_FORCE_INLINE SX_INLINE __attribute__((__always_inline__))
 #    define SX_FUNCTION __PRETTY_FUNCTION__
 #    define SX_NO_INLINE __attribute__((noinline))
 #    define SX_NO_RETURN __attribute__((noreturn))
@@ -65,8 +66,13 @@
 #    if SX_CRT_MSVC
 #        define __stdcall
 #    endif    // SX_CRT_MSVC
+#    if SX_CONFIG_FORCE_INLINE_DEBUG
+#       define SX_INLINE static 
+#    else
+#       define SX_INLINE static inline  
+#    define SX_NO_VTABLE 
+#    endif
 #elif SX_COMPILER_MSVC
-#    define sx_align_decl(_align, _decl) __declspec(align(_align)) _decl
 #    define SX_ALLOW_UNUSED
 #    define SX_FORCE_INLINE __forceinline
 #    define SX_FUNCTION __FUNCTION__
@@ -75,15 +81,26 @@
 #    define SX_CONSTFN __declspec(noalias)
 #    define SX_RESTRICT __restrict
 #    define SX_FLATTEN 
+#    if SX_CONFIG_FORCE_INLINE_DEBUG
+#       define SX_INLINE static 
+#    else
+#       define SX_INLINE static inline  
+#    endif
+#    define SX_NO_VTABLE __declspec(novtable)
 #else
 #    error "Unknown SX_COMPILER_?"
+#endif
+
+#if SX_COMPILER_GCC || SX_COMPILER_CLANG
+#    define sx_align_decl(_align, _decl) _decl __attribute__((aligned(_align)))
+#else
+#    define sx_align_decl(_align, _decl) __declspec(align(_align)) _decl
 #endif
 
 #if SX_COMPILER_CLANG
 #    define SX_PRAGMA_DIAGNOSTIC_PUSH_CLANG_() _Pragma("clang diagnostic push")
 #    define SX_PRAGMA_DIAGNOSTIC_POP_CLANG_() _Pragma("clang diagnostic pop")
-#    define SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG(_x) \
-        _Pragma(sx_stringize(clang diagnostic ignored _x))
+#    define SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG(_x) _Pragma(sx_stringize(clang diagnostic ignored _x))
 #else
 #    define SX_PRAGMA_DIAGNOSTIC_PUSH_CLANG_()
 #    define SX_PRAGMA_DIAGNOSTIC_POP_CLANG_()
@@ -151,6 +168,21 @@
 
 #ifdef __cplusplus
 #    define sx_cppbool(_b) (_b) ? true : false;
+#    define SX_CONSTEXPR constexpr
 #else
 #    define sx_cppbool(_b) _b
+#    define SX_CONSTEXPR 
 #endif
+
+
+// Idea: https://www.youtube.com/watch?v=QpAhX-gsHMs&t=967s
+// sx_defer and scope can be used to mimick the behavior of go and zig's defer 
+// "start" is the statement that you would like to run at the begining of the scope
+// "end" is the statement that you would like to run at the end of the scope
+#define _sx_var(_name) sx_concat(_name, __LINE__)
+#define sx_defer(_start, _end) for (int _sx_var(_i_) = (_start, 0); !_sx_var(_i_); (_sx_var(_i_) += 1), _end)
+#define sx_scope(_end) for (int _sx_var(_i_) = 0; !_sx_var(_i_); (_sx_var(_i_) += 1), _end)
+
+// somewhat like python's `with` statement
+#define sx_with(_init, _release) _init; for (int _sx_var(_i_) = 0; !_sx_var(_i_); (_sx_var(_i_) += 1), _release)
+

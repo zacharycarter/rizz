@@ -5,11 +5,15 @@
 
 #include "sx/vmem.h"
 #include "sx/os.h"
+#include "sx/allocator.h"
 
 #if SX_PLATFORM_WINDOWS
 #    define VC_EXTRALEAN
 #    define WIN32_LEAN_AND_MEAN
+SX_PRAGMA_DIAGNOSTIC_PUSH()
+SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(5105)
 #    include <windows.h>
+SX_PRAGMA_DIAGNOSTIC_POP()
 #elif SX_PLATFORM_POSIX
 #    include <sys/mman.h>
 #    include <unistd.h>
@@ -133,6 +137,40 @@ void sx_vmem_free_pages(sx_vmem_context* vmem, int start_page_id, int num_pages)
     }
 }
 
+sx_vmem_watch_result sx_vmem_watch_writes(sx_vmem_context* vmem, const sx_alloc* alloc, bool clear)
+{
+    sx_assert(vmem);
+    sx_assert(alloc);
+
+    DWORD flags = 0;
+    if (clear) {
+        flags |= WRITE_WATCH_FLAG_RESET;
+    }
+
+    void* ptrs = sx_malloc(alloc, sizeof(void*)*vmem->num_pages);
+    if (!ptrs) {
+        sx_memory_fail();
+        return (sx_vmem_watch_result) {0};
+    }
+
+    ULONG_PTR num_ptrs;
+    DWORD granuality;
+    if (GetWriteWatch(flags, vmem->ptr, (size_t)vmem->page_size*(size_t)vmem->num_pages, ptrs, &num_ptrs, &granuality) == 0) {
+        return (sx_vmem_watch_result) {
+            .alloc = alloc,
+            .ptrs = ptrs,
+            .num_ptrs = (int)num_ptrs
+        };
+    } else {
+        return (sx_vmem_watch_result) {0};
+    }
+}
+
+void sx_vmem_watch_clear(sx_vmem_context* vmem)
+{
+    ResetWriteWatch(vmem->ptr, (size_t)vmem->page_size*(size_t)vmem->num_pages);
+}
+
 #elif SX_PLATFORM_POSIX // if SX_PLATFORM_WINDOWS
 
 bool sx_vmem_init(sx_vmem_context* vmem, sx_vmem_flags flags, int max_pages)
@@ -175,7 +213,7 @@ void* sx_vmem_commit_page(sx_vmem_context* vmem, int page_id)
 
     void* ptr = (uint8_t*)vmem->ptr + vmem->page_size * page_id;
     if (mprotect(ptr, vmem->page_size, PROT_READ | PROT_WRITE) != 0) {
-        sx_assert_rel(0);
+        sx_assert_always(0);
         return NULL;
     }
 
@@ -211,7 +249,7 @@ void* sx_vmem_commit_pages(sx_vmem_context* vmem, int start_page_id, int num_pag
 
     void* ptr = (uint8_t*)vmem->ptr + vmem->page_size * start_page_id;
     if (mprotect(ptr, (size_t)vmem->page_size*(size_t)num_pages, PROT_READ | PROT_WRITE) != 0) {
-        sx_assert_rel(0);
+        sx_assert_always(0);
         return NULL;
     }
 
@@ -235,6 +273,19 @@ void sx_vmem_free_pages(sx_vmem_context* vmem, int start_page_id, int num_pages)
     }
 }
 
+sx_vmem_watch_result sx_vmem_watch_writes(sx_vmem_context* vmem, const sx_alloc* alloc, bool clear)
+{
+    sx_unused(clear);
+    sx_unused(vmem);
+    sx_unused(alloc);
+    return (sx_vmem_watch_result) {0};
+}
+
+void sx_vmem_watch_clear(sx_vmem_context* vmem)
+{
+    sx_unused(vmem);    
+}
+
 #endif // elif SX_PLATFORM_POSIX
 
 void* sx_vmem_get_page(sx_vmem_context* vmem, int page_id)
@@ -250,3 +301,4 @@ size_t sx_vmem_commit_size(sx_vmem_context* vmem)
 {
     return (size_t)vmem->page_size * (size_t)vmem->num_pages;
 }
+

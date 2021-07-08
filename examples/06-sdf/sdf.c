@@ -1,10 +1,12 @@
 #include "sx/string.h"
 #include "sx/timer.h"
+#include "sx/rng.h"
+#include "sx/math-vec.h"
+#include "sx/math-easing.h"
 
 #include "rizz/imgui-extra.h"
 #include "rizz/imgui.h"
 #include "rizz/rizz.h"
-#include "rizz/util.h"
 
 #include "../common.h"
 
@@ -45,6 +47,7 @@ typedef struct sdf_fs_vars {
 } sdf_fs_vars;
 
 typedef struct {
+    sx_rng rng;
     rizz_gfx_stage stage;
     rizz_camera_fps cam;
     sg_buffer vbuff;
@@ -98,6 +101,8 @@ static bool init()
     the_vfs->mount(asset_dir, "/assets");
 #endif
 
+    sx_rng_seed_time(&g_sdf.rng);
+    
     g_sdf.stage = the_gfx->stage_register("main", (rizz_gfx_stage){ .id = 0 });
     sx_assert(g_sdf.stage.id);
 
@@ -188,8 +193,8 @@ static void update(float dt)
     // loop
     if (t >= 1.0f) {
         g_sdf.tween.tm = 0;
-        g_sdf.shape_f1 = (float)the_core->rand_range(5, 10);
-        g_sdf.shape_f2 = g_sdf.shape_f1 + 1.0f + the_core->randf() * (g_sdf.shape_f1 - 1.0f);
+        g_sdf.shape_f1 = (float)sx_rng_gen_rangei(&g_sdf.rng, 5, 10);
+        g_sdf.shape_f2 = g_sdf.shape_f1 + 1.0f + sx_rng_genf(&g_sdf.rng) * (g_sdf.shape_f1 - 1.0f);
     }
 
     // Use imgui UI
@@ -199,13 +204,13 @@ static void update(float dt)
     if (the_imgui->Begin("SDF", NULL, 0)) {
         the_imgui->LabelText("Fps", "%.3f", the_core->fps());
         float deg = sx_todeg(g_sdf.light_orbit);
-        if (the_imgui->SliderFloat("Light", &deg, -180.0f, 180.0f, "%.1f", 1.0f)) {
+        if (the_imgui->SliderFloat("Light", &deg, -180.0f, 180.0f, "%.1f", 0)) {
             g_sdf.light_orbit = sx_torad(deg);
             orbit_lights();
         }
 
-        the_imgui->SliderFloat("shadow", &g_sdf.shadow_penumbra, 2.0f, 100.0f, "%.1f", 1.0f);
-        the_imgui->SliderFloat("duration", &g_sdf.anim_duration, 1.0f, 10.0f, "%.1f", 1.0f);
+        the_imgui->SliderFloat("shadow", &g_sdf.shadow_penumbra, 2.0f, 100.0f, "%.1f", 0);
+        the_imgui->SliderFloat("duration", &g_sdf.anim_duration, 1.0f, 10.0f, "%.1f", 0);
     }
     the_imgui->End();
 }
@@ -221,7 +226,8 @@ static void render()
     sdf_vs_vars vs_vars;
     sdf_fs_vars fs_vars;
 
-    sx_vec2 sizef = the_app->sizef();
+    sx_vec2 sizef;
+    the_app->window_size(&sizef);
 
     the_camera->calc_frustum_points(&g_sdf.cam.cam, frustum);
     vs_vars.camera_corners[0] = sx_vec4v3(frustum[0], 0);
@@ -244,7 +250,7 @@ static void render()
         sx_mat4 rot = sx_mat4_rotateX(SX_PIHALF);
         sx_mat4 translate = sx_mat4_translate(0, 0.0f, 2.0f);
         sx_mat4 mat = sx_mat4_mul(&translate, &rot);
-        fs_vars.shape_mat = sx_mat4x_inv(&mat);
+        fs_vars.shape_mat = sx_mat4_inv_transform(&mat);
     }
 
     // draw quad
@@ -266,7 +272,7 @@ rizz_plugin_decl_main(sdf, plugin, e)
 {
     switch (e) {
     case RIZZ_PLUGIN_EVENT_STEP:
-        update((float)sx_tm_sec(the_core->delta_tick()));
+        update(the_core->delta_time());
         render();
         break;
 
@@ -349,8 +355,8 @@ rizz_game_decl_config(conf)
     conf->app_version = 1000;
     conf->app_title = "06 - SDF";
     conf->app_flags |= RIZZ_APP_FLAG_HIGHDPI;
-    conf->window_width = 800;
-    conf->window_height = 600;
+    conf->window_width = EXAMPLES_DEFAULT_WIDTH;
+    conf->window_height = EXAMPLES_DEFAULT_HEIGHT;
     conf->swap_interval = 2;
     conf->plugins[0] = "imgui";
 }

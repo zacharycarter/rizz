@@ -10,9 +10,14 @@
 #include "sx/fiber.h"
 #include "sx/io.h"
 #include "sx/jobs.h"
-#include "sx/math.h"
+#include "sx/math-types.h"
 #include "sx/platform.h"
 #include "sx/timer.h"
+
+#define RIZZ_INCLUDE_SG_TYPES
+#   include "sg-types.h"
+#undef RIZZ_INCLUDE_SG_TYPES
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // @types
@@ -45,6 +50,10 @@ typedef struct { uint32_t id; } rizz_gfx_stage;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // @app
+
+// Set this flag for rizz_config.swap_interval to disable vsync
+#define RIZZ_APP_SWAP_INTERVAL_NOSYNC 0x7fffffff
+
 enum {
     RIZZ_APP_MAX_TOUCHPOINTS = 8,
     RIZZ_APP_MAX_MOUSEBUTTONS = 3,
@@ -74,6 +83,9 @@ typedef enum rizz_app_event_type {
     RIZZ_APP_EVENTTYPE_UPDATE_CURSOR,
     RIZZ_APP_EVENTTYPE_QUIT_REQUESTED,
     RIZZ_APP_EVENTTYPE_CLIPBOARD_PASTED,
+    RIZZ_APP_EVENTTYPE_RESIZING,
+    RIZZ_APP_EVENTTYPE_MOVING,
+    RIZZ_APP_EVENTTYPE_MOVED,
     _RIZZ_APP_EVENTTYPE_NUM,
     RIZZ_APP_EVENTTYPE_UPDATE_APIS,    // happens when a plugin updates it's API
     _RIZZ_APP_EVENTTYPE_FORCE_U32 = 0x7FFFFFF
@@ -248,13 +260,24 @@ typedef struct rizz_app_event {
 } rizz_app_event;
 
 typedef void(rizz_app_event_cb)(const rizz_app_event*);
+typedef void(rizz_app_shortcut_cb)(void* user);
+
+typedef struct rizz_config rizz_config;
+
+typedef enum rizz_cmdline_argtype {
+    RIZZ_CMDLINE_ARGTYPE_NONE,
+    RIZZ_CMDLINE_ARGTYPE_REQUIRED,
+    RIZZ_CMDLINE_ARGTYPE_OPTIONAL
+} rizz_cmdline_argtype;
 
 typedef struct rizz_api_app {
     int (*width)(void);
     int (*height)(void);
-    sx_vec2 (*sizef)(void);
+    void (*window_size)(sx_vec2* size);
     bool (*highdpi)(void);
     float (*dpiscale)(void);
+    const rizz_config* (*config)(void);
+    const char* (*config_meta_value)(const char* section, const char* name);
     void (*show_keyboard)(bool show);
     bool (*keyboard_shown)(void);
     bool (*key_pressed)(rizz_keycode key);
@@ -266,6 +289,12 @@ typedef struct rizz_api_app {
     bool (*mouse_shown)(void);
     void (*mouse_capture)(void);
     void (*mouse_release)(void);
+    const char* (*cmdline_arg_value)(const char* name);
+    bool (*cmdline_arg_exists)(const char* name);
+    void (*set_clipboard_string)(const char* str);
+    const char* (*clipboard_string)(void);
+    void (*register_shortcut)(const char* shortcut, rizz_app_shortcut_cb* shortcut_cb, void* user);
+    void (*set_crash_callback)(void (*crash_cb)(void* crash_data, void* user), void* user);
 } rizz_api_app;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -316,12 +345,19 @@ enum rizz_asset_load_flags_ {
 };
 typedef uint32_t rizz_asset_load_flags;
 
+typedef struct rizz_asset_meta_keyval {
+    char key[32];
+    char value[32];
+} rizz_asset_meta_keyval;
+
 typedef struct rizz_asset_load_params {
     const char* path;               // path to asset file
     const void* params;             // must cast to asset-specific implementation type
     const sx_alloc* alloc;          // allocator that is user sends for loading asset data
     uint32_t tags;                  // user-defined tag bits
     rizz_asset_load_flags flags;    // flags that are used for loading
+    uint32_t num_meta;              // meta key-value pairs, embedded in custom _rizz_ assets
+    const rizz_asset_meta_keyval* metas;
 } rizz_asset_load_params;
 
 typedef struct rizz_asset_load_data {
@@ -343,21 +379,18 @@ typedef struct rizz_asset_callbacks {
     // The reason that it is decoupled from on_load and runs on main thread is because we cannot
     // garranty that object creation and custom memory allocation is thread-safe
     // if rizz_asset_load_data.obj.id == 0, then the asset manager assumes that an error has occured
-    rizz_asset_load_data (*on_prepare)(const rizz_asset_load_params* params,
-                                       const sx_mem_block* mem);
+    rizz_asset_load_data (*on_prepare)(const rizz_asset_load_params* params, const sx_mem_block* mem);
 
     // Runs on worker-thread
     // File data is loaded and passed as 'mem'. Should fill the allocated object and user-data.
     // It is recommended that you don't create/allocate any permanent objects/memory stuff here
     // instead, do them in `on_prepare` and pass them as `data`
-    bool (*on_load)(rizz_asset_load_data* data, const rizz_asset_load_params* params,
-                    const sx_mem_block* mem);
+    bool (*on_load)(rizz_asset_load_data* data, const rizz_asset_load_params* params, const sx_mem_block* mem);
 
     // Runs on main-thread
     // Any optional finalization should happen in this function.
     // This function should free any user-data allocated in 'on_prepare'
-    void (*on_finalize)(rizz_asset_load_data* data, const rizz_asset_load_params* params,
-                        const sx_mem_block* mem);
+    void (*on_finalize)(rizz_asset_load_data* data, const rizz_asset_load_params* params, const sx_mem_block* mem);
 
     // Runs on main-thread
     // Reloading of object happens automatically within asset-lib.
@@ -457,20 +490,28 @@ typedef struct rizz_camera_fps {
     float yaw;
 } rizz_camera_fps;
 
-typedef struct rizz_api_camera {
-    void (*init)(rizz_camera* cam, float fov_deg, const sx_rect viewport, float fnear, float ffar);
-    void (*lookat)(rizz_camera* cam, const sx_vec3 pos, const sx_vec3 target, const sx_vec3 up);
-    sx_mat4 (*ortho_mat)(const rizz_camera* cam);
-    sx_mat4 (*perspective_mat)(const rizz_camera* cam);
-    sx_mat4 (*view_mat)(const rizz_camera* cam);
-    void (*calc_frustum_points)(const rizz_camera* cam, sx_vec3 frustum[8]);
-    void (*calc_frustum_points_range)(const rizz_camera* cam, sx_vec3 frustum[8], float fnear,
-                                      float ffar);
+typedef enum rizz_camera_view_plane {
+    RIZZ_CAMERA_VIEWPLANE_LEFT = 0,
+    RIZZ_CAMERA_VIEWPLANE_RIGHT, 
+    RIZZ_CAMERA_VIEWPLANE_TOP,
+    RIZZ_CAMERA_VIEWPLANE_BOTTOM,
+    RIZZ_CAMERA_VIEWPLANE_NEAR,
+    RIZZ_CAMERA_VIEWPLANE_FAR,
+    _RIZZ_CAMERA_VIEWPLANE_COUNT
+} rizz_camera_view_plane;
 
-    void (*fps_init)(rizz_camera_fps* cam, float fov_deg, const sx_rect viewport, float fnear,
-                     float ffar);
-    void (*fps_lookat)(rizz_camera_fps* cam, const sx_vec3 pos, const sx_vec3 target,
-                       const sx_vec3 up);
+typedef struct rizz_api_camera {
+    void (*init)(rizz_camera* cam, float fov_deg, sx_rect viewport, float fnear, float ffar);
+    void (*lookat)(rizz_camera* cam, sx_vec3 pos, sx_vec3 target, sx_vec3 up);
+    void (*location)(rizz_camera* cam, sx_vec3 pos, sx_quat rot);
+    void (*ortho_mat)(const rizz_camera* cam, sx_mat4* proj);
+    void (*perspective_mat)(const rizz_camera* cam, sx_mat4* proj);
+    void (*view_mat)(const rizz_camera* cam, sx_mat4* view);
+    void (*calc_frustum_points)(const rizz_camera* cam, sx_vec3 frustum[8]);
+    void (*calc_frustum_points_range)(const rizz_camera* cam, sx_vec3 frustum[8], float fnear, float ffar);
+    void (*calc_frustum_planes)(sx_plane frustum[_RIZZ_CAMERA_VIEWPLANE_COUNT], const sx_mat4* viewproj_mat);
+    void (*fps_init)(rizz_camera_fps* cam, float fov_deg, sx_rect viewport, float fnear, float ffar);
+    void (*fps_lookat)(rizz_camera_fps* cam, sx_vec3 pos, sx_vec3 target, sx_vec3 up);
     void (*fps_pitch)(rizz_camera_fps* cam, float pitch);
     void (*fps_pitch_range)(rizz_camera_fps* cam, float pitch, float _min, float _max);
     void (*fps_yaw)(rizz_camera_fps* cam, float yaw);
@@ -491,7 +532,9 @@ enum rizz_app_flags_ {
     RIZZ_APP_FLAG_HTML5_CANVAS_RESIZE = 0x20,
     RIZZ_APP_FLAG_IOS_KEYBOARD_RESIZES_CANVAS = 0x40,
     RIZZ_APP_FLAG_USER_CURSOR = 0x80,           // manage cursor image in RIZZ_APP_EVENTTYPE_UPDATE_CURSOR event
-    RIZZ_APP_FLAG_FORCE_GLES2 = 0x100
+    RIZZ_APP_FLAG_FORCE_GLES2 = 0x100,
+    RIZZ_APP_FLAG_CRASH_DUMP = 0x200,           // creates crash dump on program exceptions
+    RIZZ_APP_FLAG_RESUME_ICONIFIED = 0x400      // do not pause the engine when it's iconified
 };
 typedef uint32_t rizz_app_flags;
 
@@ -500,7 +543,8 @@ enum rizz_core_flags_ {
     RIZZ_CORE_FLAG_LOG_TO_PROFILER = 0x02,      // log to remote profiler
     RIZZ_CORE_FLAG_PROFILE_GPU = 0x04,          // enable GPU profiling
     RIZZ_CORE_FLAG_DUMP_UNUSED_ASSETS = 0x08,   // write `unused-assets.json` on exit
-    RIZZ_CORE_FLAG_DETECT_LEAKS = 0x10          // Detect memory leaks (default on in _DEBUG builds)
+    RIZZ_CORE_FLAG_DETECT_LEAKS = 0x10,         // Detect memory leaks (default on in _DEBUG builds)
+    RIZZ_CORE_FLAG_DEBUG_TEMP_ALLOCATOR = 0x20  // Replace temp allocator backends with heap, so we can better trace out-of-bounds and corruption
 };
 typedef uint32_t rizz_core_flags;
 
@@ -513,6 +557,15 @@ typedef enum rizz_log_level {
     RIZZ_LOG_LEVEL_DEBUG,
     _RIZZ_LOG_LEVEL_COUNT
 } rizz_log_level;
+
+typedef enum rizz_mem_option {
+    RIZZ_MEMOPTION_TRACE_CALLSTACK = 0x1,
+    RIZZ_MEMOPTION_TRACE_LEAKS = 0x2,
+    RIZZ_MEMOPTION_INSERT_CANARIES = 0x4,
+    RIZZ_MEMOPTION_MULTITHREAD = 0x8
+} rizz_mem_option;
+
+#define RIZZ_MEMOPTION_INHERIT 0xffffffff
 
 // main app/game config
 typedef struct rizz_config {
@@ -531,28 +584,39 @@ typedef struct rizz_config {
 
     int window_width;
     int window_height;
-    int multisample_count;
-    int swap_interval;
-    const char* html5_canvas_name;
+    int multisample_count;          // MSAA: (0, 2, 4, 8, 16)
+    int swap_interval;              // default = 1, set RIZZ_APP_SWAP_INTERVAL_NOSYNC to disable vsync
+    int texture_first_mip;          // default = 0, first texture mip to load from textures, higher values lowers overall texture quality and improves performance
+    sg_filter texture_filter_min;   // default = SG_FILTER_LINEAR_MIP_LINEAR
+    sg_filter texture_filter_mag;   // default = SG_FILTER_LINEAR
+    int texture_aniso;              // default = 0, texture anisotropy quality              
+
     rizz_app_event_cb* event_cb;
 
     int job_num_threads;    // number of worker threads (default:-1, then it will be num_cores-1)
     int job_max_fibers;     // maximum active jobs at a time (default = 64)
     int job_stack_size;     // jobs stack size, in kbytes (default = 1mb)
 
-    int coro_max_fibers;    // maximum running (active) coroutines at a time. (default = 64)
-    int coro_stack_size;    // coroutine stack size (default = 2mb). in kbytes
+    int coro_num_init_fibers;  // number of fibers initialized for coroutines. (default = 64)
+    int coro_stack_size;       // coroutine stack size (default = 2mb). in kbytes
 
-    int tmp_mem_max;        // per-frame temp memory size. in kbytes (defaut: 5mb per-thread)
+    int tmp_mem_max;        // per-frame temp memory size. in kbytes (default: 10mb per-thread)
 
     int profiler_listen_port;           // default: 17815
     int profiler_update_interval_ms;    // default: 10ms
+
+    bool imgui_docking;     // Enable imgui docking. (also see rizz_api_imgui_extra.dock_space_id)
 } rizz_config;
+
+typedef void(rizz_register_cmdline_arg_cb)(const char* name, char short_name,
+                                           rizz_cmdline_argtype type, const char* desc,
+                                           const char* value_desc);
 
 // Game plugins should implement this function (name should be "rizz_game_config")
 // It is called by engine to fetch configuration before initializing the app
 // The contents of conf is also set to defaults before submitting to this callback
-typedef void(rizz_game_config_cb)(rizz_config* conf, int argc, char* argv[]);
+// Note: use register_cmdline_arg (see above decleration) to add command line arguements to your app
+typedef void(rizz_game_config_cb)(rizz_config* conf, rizz_register_cmdline_arg_cb* register_cmdline_arg);
 
 #if SX_PLATFORM_ANDROID
 typedef struct ANativeActivity ANativeActivity;
@@ -570,11 +634,17 @@ RIZZ_API void ANativeActivity_onCreate_(ANativeActivity*, void*, size_t);
 
 #define rizz_game_decl_config(_conf_param_name)                        \
     rizz__app_android_decl() RIZZ_PLUGIN_EXPORT void rizz_game_config( \
-        rizz_config* _conf_param_name, int argc, char* argv[])
+        rizz_config* _conf_param_name, rizz_register_cmdline_arg_cb* register_cmdline_arg)
+
+// use this macro instead of rizz_game_decl_config, to declare config with custom command-line params function argument
+#define rizz_game_decl_config_cmdline(_conf_param_name, _register_cmdline_arg_fn)   \
+    rizz__app_android_decl() RIZZ_PLUGIN_EXPORT void rizz_game_config(              \
+        rizz_config* _conf_param_name, rizz_register_cmdline_arg_cb* _register_cmdline_arg_fn)
+
 
 // custom console commands that can be registered (sent via profiler)
 // return >= 0 for success and -1 for failure
-typedef int(rizz_core_cmd_cb)(int argc, char* argv[]);
+typedef int(rizz_core_cmd_cb)(int argc, char* argv[], void* user);
 
 typedef struct rizz_log_entry {
     rizz_log_level type;
@@ -600,39 +670,6 @@ typedef enum rizz_mem_id {
     _RIZZ_MEMID_COUNT
 } rizz_mem_id;
 
-typedef struct rizz_track_alloc_item {
-    char file[32];
-    char func[64];
-    void* ptr;
-    int64_t size;
-    int line;
-} rizz_track_alloc_item;
-
-typedef struct {
-    int64_t offset;
-    int64_t size;
-    int64_t peak;
-} rizz_linalloc_info;
-
-typedef struct {
-    const char* name;
-    const rizz_track_alloc_item* items;
-    int num_items;
-    int mem_id;
-    int64_t size;
-    int64_t peak;
-} rizz_trackalloc_info;
-
-typedef struct rizz_mem_info {
-    rizz_trackalloc_info trackers[_RIZZ_MEMID_COUNT];
-    rizz_linalloc_info temp_allocs[RIZZ_MAX_TEMP_ALLOCS];
-    int num_trackers;
-    int num_temp_allocs;
-    size_t heap;
-    size_t heap_max;
-    int heap_count;
-} rizz_mem_info;
-
 typedef struct rizz_version {
     int major;
     int minor;
@@ -650,11 +687,13 @@ typedef struct rizz_api_core {
     const sx_alloc* (*heap_alloc)(void);
 
     // temp stack allocator: fast and thread-safe (per job thread only).
-    //                       Temp allocators behave like stack, so they can push() and pop()
-    // NOTE: do not keep tmp_alloc memory between multiple frames,
-    //       At the end of each frame, the tmp_allocs are reset
-    const sx_alloc* (*tmp_alloc_push)();
-    void (*tmp_alloc_pop)();
+    // NOTE: do not keep tmp_alloc memory between multiple frames, cuz at the end of each frame, the tmp_allocs are reset
+    // stack-mode API: Temp allocators behave like stack, so they can push() and pop() memory offsets
+    //                 useful for allocating big chunks and also save memory between frames
+    //          Note:  Not recommended to use another allocator with arbitary source within push/pop block
+    const sx_alloc* (*tmp_alloc_push)(void);
+    void (*tmp_alloc_pop)(void);
+    const sx_alloc* (*tmp_alloc_push_trace)(const char* file, uint32_t line);
 
     // TLS functions are used for setting TLS variables to worker threads by an external source
     // register: use name to identify the variable (Id). (not thread-safe)
@@ -669,14 +708,11 @@ typedef struct rizz_api_core {
 
     const sx_alloc* (*alloc)(rizz_mem_id id);
 
-    void (*get_mem_info)(rizz_mem_info* info);
+    sx_alloc* (*trace_alloc_create)(const char* name, uint32_t mem_opts, const char* parent, const sx_alloc* alloc);
+    void (*trace_alloc_destroy)(sx_alloc* alloc);
+    void (*trace_alloc_clear)(sx_alloc* alloc);
 
     rizz_version (*version)(void);
-
-    // random
-    uint32_t (*rand)();                       // 0..UNT32_MAX
-    float (*randf)();                         // 0..1
-    int (*rand_range)(int _min, int _max);    // _min.._max
 
     uint64_t (*delta_tick)(void);
     uint64_t (*elapsed_tick)(void);
@@ -684,10 +720,17 @@ typedef struct rizz_api_core {
     float (*fps)(void);
     float (*fps_mean)(void);
     int64_t (*frame_index)(void);
+    void (*pause)(void);
+    void (*resume)(void);
+    bool (*is_paused)(void);
 
     void (*set_cache_dir)(const char* path);
     const char* (*cache_dir)();
     const char* (*data_dir)();
+
+    const char* (*str_alloc)(uint32_t* phandle, const char* fmt, ...);
+    void        (*str_free)(uint32_t handle);
+    const char* (*str_cstr)(uint32_t handle);
 
     // jobs
     sx_job_t (*job_dispatch)(int count,
@@ -704,24 +747,22 @@ typedef struct rizz_api_core {
     void (*coro_yield)(void* pfrom, int nframes);
 
     void (*register_log_backend)(const char* name,
-                                 void (*log_cb)(const rizz_log_entry* entry, void* user),
-                                 void* user);
+                                 void (*log_cb)(const rizz_log_entry* entry, void* user), void* user);
     void (*unregister_log_backend)(const char* name);
 
     // use rizz_log_xxxx macros instead of these
     void (*print_info)(uint32_t channels, const char* source_file, int line, const char* fmt, ...);
     void (*print_debug)(uint32_t channels, const char* source_file, int line, const char* fmt, ...);
-    void (*print_verbose)(uint32_t channels, const char* source_file, int line, const char* fmt,
-                          ...);
+    void (*print_verbose)(uint32_t channels, const char* source_file, int line, const char* fmt, ...);
     void (*print_error)(uint32_t channels, const char* source_file, int line, const char* fmt, ...);
-    void (*print_warning)(uint32_t channels, const char* source_file, int line, const char* fmt,
-                          ...);
+    void (*print_warning)(uint32_t channels, const char* source_file, int line, const char* fmt, ...);
     void (*set_log_level)(rizz_log_level level);
 
     void (*begin_profile_sample)(const char* name, rizz_profile_flags flags, uint32_t* hash_cache);
     void (*end_profile_sample)();
 
-    void (*register_console_command)(const char* cmd, rizz_core_cmd_cb* callback);
+    void (*register_console_command)(const char* cmd, rizz_core_cmd_cb* callback, const char* shortcut, void* user);
+    void (*execute_console_command)(const char* cmd_and_args);
 
     // debugging
     void (*show_graphics_debugger)(bool* p_open);
@@ -729,7 +770,6 @@ typedef struct rizz_api_core {
     void (*show_log)(bool* p_open);
 } rizz_api_core;
 
-// clang-format off
 #define rizz_log_info(_text, ...)     (RIZZ_CORE_API_VARNAME)->print_info(0, __FILE__, __LINE__, _text, ##__VA_ARGS__)
 #define rizz_log_debug(_text, ...)    (RIZZ_CORE_API_VARNAME)->print_debug(0, __FILE__, __LINE__, _text, ##__VA_ARGS__)
 #define rizz_log_verbose(_text, ...)  (RIZZ_CORE_API_VARNAME)->print_verbose(0, __FILE__, __LINE__, _text, ##__VA_ARGS__)
@@ -769,28 +809,23 @@ typedef struct rizz_api_core {
         (void)rmt_sample_raii_##_name;   \
         (RIZZ_CORE_API_VARNAME)->end_profile_sample();
 
-// using these macros are preferred to the_core->tmp_alloc_push() and the_core->tmp_alloc_pop()
-// They somewhat emulates C++ RAII and throws 'unused variable' warning when _end is not called
-#define rizz_temp_alloc_begin(_name) \
-        uint32_t _temp_alloc_raii_##_name; \
-        const sx_alloc* _name = (RIZZ_CORE_API_VARNAME)->tmp_alloc_push()
-#define rizz_temp_alloc_end(_name) \
-        (void)_temp_alloc_raii_##_name; \
-        (RIZZ_CORE_API_VARNAME)->tmp_alloc_pop()
+// usage pattern:
+// rizz_profile(name) {
+//  ...
+// } // automatically ends profile sample
+#define rizz_profile(_name) static uint32_t sx_concat(rmt_sample_hash_, _name) = 0; \
+        sx_defer((RIZZ_CORE_API_VARNAME)->begin_profile_sample(sx_stringize(_name), 0, &sx_concat(rmt_sample_hash_, _name)), \
+                 (RIZZ_CORE_API_VARNAME)->end_profile_sample())
 
-// clang-format on
+#define rizz_with_temp_alloc(_name) sx_with(const sx_alloc* _name = (RIZZ_CORE_API_VARNAME)->tmp_alloc_push(), \
+                                            (RIZZ_CORE_API_VARNAME)->tmp_alloc_pop()) 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // @graphics
 // _sg-types.h is copy/pasted from sokol_gfx.h, all the types are equal between these two files
-#define RIZZ_INCLUDE_SG_TYPES
-#include "sg-types.h"
-#undef RIZZ_INCLUDE_SG_TYPES
 
-// clang-format off
 #define _rizz_concat_path_3(s1, s2, s3) sx_stringize(s1/s2/s3)
-#define _rizz_shader_path_lang(_basepath, _lang, _filename) \
-    _rizz_concat_path_3(_basepath, _lang, _filename)
+#define _rizz_shader_path_lang(_basepath, _lang, _filename) _rizz_concat_path_3(_basepath, _lang, _filename)
 
 // HELP: this macro can be used as a helper in including cross-platform shaders from source
 //       appends _api_ (hlsl/glsl/gles/msl) between `_basepath` and `_filename`
@@ -882,6 +917,7 @@ typedef struct rizz_shader_refl {
 typedef struct rizz_shader_info {
     rizz_shader_refl_input inputs[SG_MAX_VERTEX_ATTRIBUTES];
     int num_inputs;
+    uint32_t name_hdl;
 } rizz_shader_info;
 
 typedef struct rizz_vertex_attr {
@@ -909,10 +945,13 @@ typedef struct rizz_texture_load_params {
     sg_wrap wrap_v;
     sg_wrap wrap_w;
     sg_pixel_format fmt;    // request image format. only valid for basis files
+    int aniso;
+    bool srgb;
 } rizz_texture_load_params;
 
 // texture metadata
 typedef struct rizz_texture_info {
+    uint32_t name_hdl;      // get name with the_core->str_cstr();
     sg_image_type type;
     sg_pixel_format format;
     int mem_size_bytes;
@@ -1036,7 +1075,6 @@ typedef struct rizz_api_gfx_draw {
     void (*draw)(int base_element, int num_elements, int num_instances);
     void (*dispatch)(int thread_group_x, int thread_group_y, int thread_group_z);
     void (*end_pass)();
-
     void (*update_buffer)(sg_buffer buf, const void* data_ptr, int data_size);
     int (*append_buffer)(sg_buffer buf, const void* data_ptr, int data_size);
     void (*update_image)(sg_image img, const sg_image_content* data);
@@ -1044,7 +1082,63 @@ typedef struct rizz_api_gfx_draw {
     // profile
     void (*begin_profile_sample)(const char* name, uint32_t* hash_cache);
     void (*end_profile_sample)();
+
+    // debug version of calls (see macros below)
+    void (*begin_default_pass_d)(const sg_pass_action* pass_action, int width, int height, const char* file, uint32_t line);
+    void (*begin_pass_d)(sg_pass pass, const sg_pass_action* pass_action, const char* file, uint32_t line);
+    void (*apply_viewport_d)(int x, int y, int width, int height, bool origin_top_left, const char* file, uint32_t line);
+    void (*apply_scissor_rect_d)(int x, int y, int width, int height, bool origin_top_left, const char* file, uint32_t line);
+    void (*apply_pipeline_d)(sg_pipeline pip, const char* file, uint32_t line);
+    void (*apply_bindings_d)(const sg_bindings* bind, const char* file, uint32_t line);
+    void (*apply_uniforms_d)(sg_shader_stage stage, int ub_index, const void* data, int num_bytes, const char* file, uint32_t line);
+    void (*draw_d)(int base_element, int num_elements, int num_instances, const char* file, uint32_t line);
+    void (*dispatch_d)(int thread_group_x, int thread_group_y, int thread_group_z, const char* file, uint32_t line);
+    void (*end_pass_d)(const char* file, uint32_t line);
+    void (*update_buffer_d)(sg_buffer buf, const void* data_ptr, int data_size, const char* file, uint32_t line);
+    int (*append_buffer_d)(sg_buffer buf, const void* data_ptr, int data_size, const char* file, uint32_t line);
+    void (*update_image_d)(sg_image img, const sg_image_content* data, const char* file, uint32_t line);
 } rizz_api_gfx_draw;
+
+#define rizz_gfx_begin(_stage) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.begin(_stage)
+#define rizz_gfx_end() \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.end()
+#define rizz_gfx_begin_default_pass(_pass_action, _width, _height) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.begin_default_pass_d(_pass_action, _width, _height, __FILE__, __LINE__)
+#define rizz_gfx_begin_pass(_pass, _pass_action) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.begin_pass_d(_pass, _pass_action, __FILE__, __LINE__)
+#define rizz_gfx_apply_viewport(_x, _y, _width, _height, _origin_top_left) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.apply_viewport_d(_x, _y, _width, _height, _origin_top_left, __FILE__, __LINE__)
+#define rizz_gfx_apply_scissor_rect(_x, _y, _width, _height, _origin_top_left) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.apply_scissor_rect_d(_x, _y, _width, _height, _origin_top_left, __FILE__, __LINE__)
+#define rizz_gfx_apply_pipeline(_pip) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.apply_pipeline_d(_pip, __FILE__, __LINE__)
+#define rizz_gfx_apply_bindings(_bindings) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.apply_bindings_d(_bindings, __FILE__, __LINE__)
+#define rizz_gfx_apply_uniforms(_stage, _ub_index, _data, _bytes) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.apply_uniforms_d(_stage, _ub_index, _data, _bytes, __FILE__, __LINE__)
+#define rizz_gfx_draw(_base_element, _num_elements, _num_instances) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.draw_d(_base_element, _num_elements, _num_instances, __FILE__, __LINE__)
+#define rizz_gfx_dispatch(_thread_group_x, _thread_group_y, _thread_group_z) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.dispatch_d(_thread_group_x, _thread_group_y, _thread_group_z, __FILE__, __LINE__)
+#define rizz_gfx_end_pass() \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.end_pass_d(__FILE__, __LINE__)
+#define rizz_gfx_update_buffer(_buf, _data, _size) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.update_buffer_d(_buf, _data, _size, __FILE__, __LINE__)
+#define rizz_gfx_append_buffer(_buf, _data, _size) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.append_buffer_d(_buf, _data, _size, __FILE__, __LINE__)
+#define rizz_gfx_update_image(_img, _data, _size) \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.update_image_d(_img, _data, _size, __FILE__, __LINE__)
+
+// using these macros are preferred to draw_api->begin_profile_sample() and draw_api->end_profile_sample()
+// because They provide cache variables for name hashing and also somewhat emulates C++ RAII
+#define rizz_gfx_profile_begin(_name)                \
+    static uint32_t rmt_gpu_sample_hash_##_name = 0; \
+    uint32_t rmt_gpu_sample_raii_##_name;            \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.begin_profile_sample(#_name, &rmt_gpu_sample_hash_##_name)
+#define rizz_gfx_profile_end(_name)    \
+    (void)rmt_gpu_sample_raii_##_name; \
+    (RIZZ_GRAPHICS_API_VARNAME)->staged.end_profile_sample();
 
 typedef struct rizz_api_gfx {
     rizz_api_gfx_draw imm;       // immediate draw API
@@ -1094,6 +1188,10 @@ typedef struct rizz_api_gfx {
     sg_shader (*alloc_shader)(void);
     sg_pipeline (*alloc_pipeline)(void);
     sg_pass (*alloc_pass)(void);
+
+    const char* (*str_alloc)(uint32_t* phandle, const char* fmt, ...);
+    void (*rizz__str_free)(uint32_t handle);
+    const char* (*rizz__str_cstr)(uint32_t handle);
 
     // init/fail objects
     void (*init_buffer)(sg_buffer buf_id, const sg_buffer_desc* desc);
@@ -1150,7 +1248,7 @@ typedef struct rizz_api_gfx {
     sg_shader_desc* (*shader_setup_desc)(sg_shader_desc* desc, const rizz_shader_refl* vs_refl,
                                          const void* vs, int vs_size,
                                          const rizz_shader_refl* fs_refl, const void* fs,
-                                         int fs_size);
+                                         int fs_size, uint32_t* name_hdl);
     rizz_shader (*shader_make_with_data)(const sx_alloc* alloc, uint32_t vs_data_size,
                                          const uint32_t* vs_data, uint32_t vs_refl_size,
                                          const uint32_t* vs_refl_json, uint32_t fs_data_size,
@@ -1170,20 +1268,12 @@ typedef struct rizz_api_gfx {
     sg_image (*texture_checker)();
     rizz_texture (*texture_create_checker)(int checker_size, int size, const sx_color colors[2]);
     const rizz_texture* (*texture_get)(rizz_asset texture_asset);
+    void (*texture_set_default_quality)(sg_filter min_filter, sg_filter mag_filter, int aniso, int first_mip);
+    void (*texture_default_quality)(sg_filter* min_filter, sg_filter* mag_filter, int* aniso, int* first_mip);
 
     // info
     const rizz_gfx_trace_info* (*trace_info)();
 } rizz_api_gfx;
-
-// using these macros are preferred to draw_api->begin_profile_sample() and draw_api->end_profile_sample()
-// because They provide cache variables for name hashing and also somewhat emulates C++ RAII
-#define rizz_gfx_profile_begin(_draw_api, _name)        \
-    static uint32_t rmt_gpu_sample_hash_##_name = 0; \
-    uint32_t rmt_gpu_sample_raii_##_name;            \
-    (_draw_api)->begin_profile_sample(#_name, &rmt_gpu_sample_hash_##_name)
-#define rizz_gfx_profile_end(_draw_api, _name)    \
-    (void)rmt_gpu_sample_raii_##_name; \
-    (_draw_api)->end_profile_sample();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // @plugin
@@ -1385,12 +1475,60 @@ typedef struct rizz_api_http {
     // callback requests: triggers the callback when get/post is complete
     // NOTE: do not call `free` in the callback functions, the request will be freed automatically
     void (*get_cb)(const char* url, rizz_http_cb* callback, void* user);
-    void (*post_cb)(const char* url, const void* data, size_t size, rizz_http_cb* callback,
-                    void* user);
+    void (*post_cb)(const char* url, const void* data, size_t size, rizz_http_cb* callback, void* user);
 } rizz_api_http;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// @reflect
+// @reflection
+// 
+// A simple reflection/serialization system that supports POD types and tested structs
+// Before using the reflection data for any of your types, you should first register them with rizz_refl_reg_XXX 
+// family of macros (see below). There are 3 types of reflection types: 1)enums 2)functions 3)struct fields
+// Enums are registered by their Type, Enumerator and enum value
+// Functions are registered by function name and pointer
+// Fields are registered by their parent struct type, their own type and field name, along with their offset and other info
+// You can register already registered struct types as fields for other structs. 
+// In the example below, our goal is to regiter `rizz_shader_info` struct, which has an array of rizz_shader_refl_input struct:
+//
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_FLOAT, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_FLOAT2, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_FLOAT3, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_FLOAT4, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_BYTE4, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_BYTE4N, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_UBYTE4, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_UBYTE4N, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_SHORT2, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_SHORT2N, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_SHORT4, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_SHORT4N, NULL);
+//    rizz_refl_reg_enum(ctx, sg_vertex_format, SG_VERTEXFORMAT_UINT10_N2, NULL);
+//
+//    rizz_refl_reg_field(ctx, rizz_shader_refl_input, char[32], name, "shader input name", NULL);
+//    rizz_refl_reg_field(ctx, rizz_shader_refl_input, char[32], semantic, "shader semantic name", NULL);
+//    rizz_refl_reg_field(ctx, rizz_shader_refl_input, int, semantic_index, "shader semantic index", NULL);
+//    rizz_refl_reg_field(ctx, rizz_shader_refl_input, sg_vertex_format, type, "shader input type", NULL);
+//
+//    rizz_refl_reg_field(ctx, rizz_shader_info, rizz_shader_refl_input[SG_MAX_VERTEX_ATTRIBUTES], inputs, "shader inputs", NULL);
+//    rizz_refl_reg_field(ctx, rizz_shader_info, int, num_inputs, "shader input count", NULL);
+//
+// After you have registered the fields and enums, you can use in-engine json serializer to serialize data back and forth
+// Or make a custom parser yourself. See basic-usage document for more detailed info on that topic.
+// Now in the example above, we want to write the data in rizz_shader_info instance to a json file:
+//
+//        sx_mem_block* jmem = the_refl->serialize_json(ctx, "rizz_shader_info", &shader->info, the_core->heap_alloc(), true);
+//        sx_assert(jmem);
+//        FILE* f = fopen("test.json", "wb");
+//        fwrite(jmem->data, jmem->size - 1, 1, f);
+//        fclose(f); 
+//
+// And now, deserialize the rizz_shader_info data from the same json file:
+//
+//        rizz_shader_info info;
+//        rizz_asset a = the_asset->load("json", "test.json", &(rizz_json_load_params){0}, 
+//                        RIZZ_ASSET_LOAD_FLAG_ABSOLUTE_PATH|RIZZ_ASSET_LOAD_FLAG_WAIT_ON_LOAD, NULL, 0);
+//        the_refl->deserialize_json(ctx, "rizz_shader_info", &info, the_asset->obj(a).ptr, 0);
+//
 typedef enum rizz_refl_type {
     RIZZ_REFL_ENUM,    //
     RIZZ_REFL_FUNC,    //
@@ -1400,7 +1538,7 @@ typedef enum rizz_refl_type {
 enum rizz_refl_flags_ {
     RIZZ_REFL_FLAG_IS_PTR = 0x1,       // field is pointer
     RIZZ_REFL_FLAG_IS_STRUCT = 0x2,    // field is struct type
-    RIZZ_REFL_FLAG_IS_ARRAY = 0x4,     // field is array (only built-in types are supported)
+    RIZZ_REFL_FLAG_IS_ARRAY = 0x4,     // field is array
     RIZZ_REFL_FLAG_IS_ENUM = 0x8       // field is enum
 };
 typedef uint32_t rizz_refl_flags;
@@ -1420,50 +1558,263 @@ typedef struct rizz_refl_info {
     int stride;
     uint32_t flags;
     rizz_refl_type internal_type;
+    const void* meta;
 } rizz_refl_info;
 
-typedef struct rizz__refl_field {
+typedef struct rizz_refl_context rizz_refl_context;
+typedef struct rizz_json rizz_json;    // rizz/json.h
+
+typedef enum rizz_refl_variant_type {
+    RIZZ_REFL_VARIANTTYPE_UNKNOWN = 0,
+    RIZZ_REFL_VARIANTTYPE_CSTRING,
+    RIZZ_REFL_VARIANTTYPE_CHAR,
+    RIZZ_REFL_VARIANTTYPE_FLOAT,
+    RIZZ_REFL_VARIANTTYPE_DOUBLE,
+    RIZZ_REFL_VARIANTTYPE_INT32,
+    RIZZ_REFL_VARIANTTYPE_INT8,
+    RIZZ_REFL_VARIANTTYPE_INT16,
+    RIZZ_REFL_VARIANTTYPE_INT64,
+    RIZZ_REFL_VARIANTTYPE_UINT8,
+    RIZZ_REFL_VARIANTTYPE_UINT16,
+    RIZZ_REFL_VARIANTTYPE_UINT32,
+    RIZZ_REFL_VARIANTTYPE_UINT64,
+    RIZZ_REFL_VARIANTTYPE_BOOL,
+    RIZZ_REFL_VARIANTTYPE_MAT4,
+    RIZZ_REFL_VARIANTTYPE_MAT3,
+    RIZZ_REFL_VARIANTTYPE_VEC4,
+    RIZZ_REFL_VARIANTTYPE_VEC3,
+    RIZZ_REFL_VARIANTTYPE_VEC2,
+    RIZZ_REFL_VARIANTTYPE_IVEC2,
+    RIZZ_REFL_VARIANTTYPE_COLOR,
+    RIZZ_REFL_VARIANTTYPE_AABB,
+    RIZZ_REFL_VARIANTTYPE_RECT,
+    _RIZZ_REFL_VARIANTTYPE_COUNT
+} rizz_refl_variant_type;
+
+typedef struct rizz_refl_variant {
+    rizz_refl_variant_type type;
+    union {
+        const char* str;
+        bool b;
+        
+        uint8_t u8;
+        uint16_t u16;
+        uint32_t u32;
+        uint64_t u64;
+
+        int8_t i8;
+        int16_t i16;
+        int32_t i32;
+        int64_t i64;
+
+        float f;
+        double d;
+
+        sx_mat4 mat4;
+        sx_mat3 mat3;
+        sx_vec4 v4;
+        sx_vec3 v3;
+        sx_vec2 v2;
+        sx_ivec2 iv2;
+        sx_color color;
+        sx_aabb aabb;
+        sx_rect rect;
+    };
+} rizz_refl_variant;
+
+typedef struct rizz_refl_serialize_callbacks {
+    bool (*on_begin)(const char* type_name, void* user);
+    void (*on_end)(void* user);
+    void (*on_builtin)(const char* name, rizz_refl_variant value, void* user, const void* meta, bool last_in_parent);
+    void (*on_builtin_array)(const char* name, const rizz_refl_variant* var, int count, void* user, 
+                             const void* meta, bool last_in_parent);
+    void (*on_struct_begin)(const char* name, const char* type_name, int size, int count, void* user, const void* meta);
+    void (*on_struct_array_element)(int index, void* user, const void* meta);
+    void (*on_struct_end)(void* user, const void* meta, bool last_in_parent);
+    void (*on_enum)(const char* name, int value, const char* value_name, void* user, const void* meta, bool last_in_parent);
+} rizz_refl_serialize_callbacks;
+
+typedef struct rizz_refl_deserialize_callbacks {
+    bool (*on_begin)(const char* type_name, void* user);
+    void (*on_end)(void* user);
+    void (*on_builtin)(const char* name, void* data, rizz_refl_variant_type type, int size, void* user, 
+                       const void* meta, bool last_in_parent);
+    void (*on_builtin_array)(const char* name, void* data, rizz_refl_variant_type type, int count, int stride, 
+                             void* user, const void* meta, bool last_in_parent);
+    void (*on_struct_begin)(const char* name, const char* type_name, int size, int count, void* user, const void* meta);
+    void (*on_struct_array_element)(int index, void* user, const void* meta);
+    void (*on_struct_end)(void* user, const void* meta, bool last_in_parent);
+    void (*on_enum)(const char* name, int* out_value, void* user, const void* meta, bool last_in_parent);
+} rizz_refl_deserialize_callbacks;
+
+typedef struct rizz_refl_field {
     rizz_refl_info info;
-    void* value;
-} rizz__refl_field;
+    void* value;    // pointer than contains arbitary field value(s) based on info.type/array/etc.
+} rizz_refl_field;
 
 typedef struct rizz_api_refl {
-    void (*_reg)(rizz_refl_type internal_type, void* any, const char* type, const char* name,
-                 const char* base, const char* desc, int size, int base_size);
-    int (*size_of)(const char* base_type);
-    void* (*get_func)(const char* name);
-    int (*get_enum)(const char* name, int not_found);
-    const char* (*get_enum_name)(const char* type, int val);
-    void* (*get_field)(const char* base_type, void* obj, const char* name);
-    int (*get_fields)(const char* base_type, void* obj, rizz__refl_field* fields, int max_fields);
-    int (*reg_count)();
-    bool (*is_cstring)(const rizz_refl_info* r);
+    rizz_refl_context* (*create_context)(const sx_alloc* alloc);
+    void (*destroy_context)(rizz_refl_context* ctx);
+
+    // use provided macros instead of this function
+    int (*_reg_private)(rizz_refl_context* ctx, 
+                        rizz_refl_type internal_type,  // core type (enum/func/field)
+                        void* any,                     // offset_in_struct for fields, integer value for enums, func pointer for functions
+                        const char* type,              // enums: enum name string, fields: type of field (int/float/struct_type), func: typedef of func
+                        const char* name,              // enums: enum value string, fields: name of the field, func: function name
+                        const char* base,              // only valid for fields, which is owner struct name
+                        const char* desc,              // description
+                        int size,                      // enums: size of parent enum type, fields: size of the field value, func: size of function pointer
+                        int base_size,                 // only valid for fields, size of owner struct
+                        const void* meta               // meta data per type, will be passed to callbacks (mostly extra UI stuff)
+                        );                
+
+    int (*size_of)(rizz_refl_context* ctx, const char* base_type);
+    void* (*get_func)(rizz_refl_context* ctx,const char* name);
+    int (*get_enum)(rizz_refl_context* ctx,const char* name, int not_found);
+    void* (*get_field)(rizz_refl_context* ctx,const char* base_type, void* obj, const char* name);
+    const char* (*get_enum_name)(rizz_refl_context* ctx,const char* type, int val);
+    int (*reg_count)(rizz_refl_context* ctx);
+
+    bool (*serialize)(rizz_refl_context* ctx, const char* type_name, const void* data, void* user, 
+                      const rizz_refl_serialize_callbacks* callbacks);
+    bool (*deserialize)(rizz_refl_context* ctx, const char* type_name, void* data, void* user,
+                        const rizz_refl_deserialize_callbacks* callbacks);
+    int (*get_fields)(rizz_refl_context* ctx, const char* base_type, void* obj, rizz_refl_field* fields, 
+                      int max_fields);
+
+    bool (*deserialize_json)(rizz_refl_context* ctx, 
+                             const char* type_name, 
+                             void* data, 
+                             rizz_json* json, 
+                             int root_token_id);
+    sx_mem_block* (*serialize_json)(rizz_refl_context* ctx, 
+                                    const char* type_name, 
+                                    const void* data, 
+                                    const sx_alloc* alloc,
+                                    bool prettify);
+    
 } rizz_api_refl;
 
-// clang-format off
-#define rizz_refl_enum(_type, _name) \
-    (RIZZ_REFLECT_API_VARNAME)->_reg(RIZZ_REFL_ENUM, (void*)(intptr_t)_name, #_type, #_name, NULL, "", sizeof(_type), 0)
-#define rizz_refl_func(_type, _name, _desc) \
-    (RIZZ_REFLECT_API_VARNAME)->_reg(RIZZ_REFL_FUNC, &_name, #_type, #_name, NULL, _desc, sizeof(void*), 0)
-#define rizz_refl_field(_struct, _type, _name, _desc)   \
-    (RIZZ_REFLECT_API_VARNAME)->_reg(RIZZ_REFL_FIELD, &(((_struct*)0)->_name), #_type, #_name, #_struct, _desc, sizeof(_type), sizeof(_struct))
-// clang-format on
+// reflection info registration macros
+#define rizz_refl_reg_enum(_ctx, _type, _name, _meta) \
+    (RIZZ_REFLECT_API_VARNAME)->_reg_private(_ctx, RIZZ_REFL_ENUM, (void*)(intptr_t)_name, #_type, #_name, NULL, "", sizeof(_type), 0, _meta)
+#define rizz_refl_reg_func(_ctx, _type, _name, _desc, _meta) \
+    (RIZZ_REFLECT_API_VARNAME)->_reg_private(_ctx, RIZZ_REFL_FUNC, &_name, #_type, #_name, NULL, _desc, sizeof(void*), 0, _meta)
+#define rizz_refl_reg_field(_ctx, _struct, _type, _name, _desc, _meta)   \
+    (RIZZ_REFLECT_API_VARNAME)->_reg_private(_ctx, RIZZ_REFL_FIELD, &(((_struct*)0)->_name), #_type, #_name, #_struct, _desc, sizeof(_type), sizeof(_struct), _meta)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // @json
 // json files can be loaded by asset manager with the type_name="json"
-// the underlying type for rizz_asset_obj is a pointer to cj5_result. remember to include "rizz/json.h"
+// the underlying type for rizz_asset_obj is a pointer to rizz_json. remember to include "rizz/json.h"
 // load parameters:
 // load_cb/reload_cb are optional (can be NULL) and can be given to asset loader, to automatically trigger when 
 // json data is loaded or reloaded. They will always run in the main thread.
 // NOTE: keeping callback functions in framework will likely cause trouble when the guest program reloads
 // TODO: fix this
-typedef struct cj5_result cj5_result;
-typedef void (rizz_json_reload_cb)(cj5_result* new_result, cj5_result* prev_result, void* user);
-typedef void (rizz_json_load_cb)(cj5_result* result, void* user);
+
+typedef void (rizz_json_reload_cb)(rizz_json* new_json, rizz_json* prev_json);
+typedef void (rizz_json_load_cb)(rizz_json* json);
+typedef void (rizz_json_unload_cb)(rizz_json* json);
 
 typedef struct rizz_json_load_params {
     rizz_json_load_cb* load_fn;
     rizz_json_reload_cb* reload_fn;
+    rizz_json_unload_cb* unload_fn;
     void* user;
 } rizz_json_load_params;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// @misc
+
+// rizz_event_queue: small _circular_ stack-based event queue.
+// useful for pushing and polling gameplay events to components/objects
+// NOTE: This is a small on-stack event queue implementation, and it's not thread-safe
+//       If you want to use a more general thread-safe queue, use sx/thread.h: sx_queue_spsc
+// NOTE: This is a circular queue, so it only holds RIZZ_EVENTQUEUE_MAX_EVENTS events and overwrites
+//       previous ones if it's overflowed. So use it with this limitation in mind
+//       most gameplay events for a component shouldn't require many events per-frame. If this
+//       happens to not be the case, then make your own queue or increase the
+//       `RIZZ_EVENTQUEUE_MAX_EVENTS` value
+//
+#ifndef RIZZ_EVENTQUEUE_MAX_EVENTS
+#    define RIZZ_EVENTQUEUE_MAX_EVENTS 4
+#endif
+
+typedef struct rizz_event {
+    int e;
+    void* user;
+} rizz_event;
+
+typedef struct rizz_event_queue {
+    rizz_event events[RIZZ_EVENTQUEUE_MAX_EVENTS];
+    int first;
+    int count;
+} rizz_event_queue;
+
+SX_INLINE void rizz_event_push(rizz_event_queue* eq, int event, void* user)
+{
+    if (eq->count < RIZZ_EVENTQUEUE_MAX_EVENTS) {
+        int index = (eq->first + eq->count) % RIZZ_EVENTQUEUE_MAX_EVENTS;
+        eq->events[index].e = event;
+        eq->events[index].user = user;
+        ++eq->count;
+    } else {
+        // overwrite previous events !!!
+        int first = eq->first;
+        first = ((first + 1) < RIZZ_EVENTQUEUE_MAX_EVENTS) ? (first + 1) : 0;
+        int index = (first + eq->count) % RIZZ_EVENTQUEUE_MAX_EVENTS;
+        eq->events[index].e = event;
+        eq->events[index].user = user;
+        eq->first = first;
+    }
+}
+
+SX_INLINE bool rizz_event_poll(rizz_event_queue* eq, rizz_event* e)
+{
+    if (eq->count > 0) {
+        int first = eq->first;
+        *e = eq->events[first];
+        eq->first = ((first + 1) < RIZZ_EVENTQUEUE_MAX_EVENTS) ? (first + 1) : 0;
+        --eq->count;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+SX_INLINE rizz_event rizz_event_peek(const rizz_event_queue* eq)
+{
+    sx_assert(eq->count > 0);
+    return eq->events[eq->first];
+}
+
+SX_INLINE bool rizz_event_empty(const rizz_event_queue* eq)
+{
+    return eq->count == 0;
+}
+
+// tween helper: useful for small animations and transitions
+//
+// usage:
+//      frame_update() {
+//          static rizz_tween t;
+//          float val = rizz_tween_update(&t, delta_time, )
+//          // val: [0, 1]. you can ease it or do whatever you like
+//          if (rizz_tween_done(&t)) {
+//              // tweening is finished. trigger something
+//          }
+//      }
+//
+typedef struct rizz_tween {
+    float tm;
+} rizz_tween;
+
+SX_INLINE float rizz_tween_update(rizz_tween* tween, float dt, float max_tm)
+{
+    sx_assert(max_tm > 0.0);
+    float t = sx_min(1.0f, tween->tm / max_tm);
+    tween->tm += dt;
+    return t;
+}

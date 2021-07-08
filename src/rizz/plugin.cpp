@@ -10,9 +10,11 @@
 #include "sx/string.h"
 
 #ifndef RIZZ_BUNDLE
+#    include "stackwalkerc/stackwalkerc.h"
 #    define CR_MAIN_FUNC "rizz_plugin_main"
 #    define CR_EVENT_FUNC "rizz_plugin_event_handler"
-//#define CR_DEBUG 1
+// uncomment this on to debug CR
+// #define CR_DEBUG 1
 #    if CR_DEBUG
 #        define CR_LOG(...) the__core.print_debug(0, __FILE__, __LINE__, __VA_ARGS__)
 #    else
@@ -20,6 +22,13 @@
 #    endif
 #    define CR_ERROR(...) the__core.print_error(0, __FILE__, __LINE__, __VA_ARGS__)
 #    define CR_HOST CR_SAFEST
+
+#   if SX_PLATFORM_WINDOWS
+    typedef struct _IMAGE_NT_HEADERS64 *PIMAGE_NT_HEADERS64;
+    typedef PIMAGE_NT_HEADERS64 (__stdcall* ImageNtHeader_t)(void*);
+    static ImageNtHeader_t fImageNtHeader;
+    #define IMAGE_NT_HEADER_FUNC fImageNtHeader
+#   endif
 
 SX_PRAGMA_DIAGNOSTIC_PUSH()
 SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG_GCC("-Wunused-function")
@@ -64,6 +73,9 @@ struct rizz__plugin_mgr {
     int* plugin_update_order = nullptr;    // indices to 'plugins' array
     char plugin_path[256] = { 0 };
     rizz__plugin_injected_api* injected = nullptr;
+    #if SX_PLATFORM_WINDOWS && !defined(RIZZ_BUNDLE)
+        HMODULE dbghelp;
+    #endif
     bool loaded;
 };
 
@@ -76,6 +88,7 @@ SX_PRAGMA_DIAGNOSTIC_PUSH()
 SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4267)
 SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4244)
 SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4146)
+SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4505)
 SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG_GCC("-Wunused-function")
 SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG("-Wshorten-64-to-32")
 #include "sort/sort.h"
@@ -95,13 +108,22 @@ bool rizz__plugin_init(const sx_alloc* alloc, const char* plugin_path)
             return false;
         }
     } else {
-#if SX_PLATFORM_LINUX || SX_PLATFORM_RPI
+    #if SX_PLATFORM_LINUX || SX_PLATFORM_RPI
         sx_strcpy(g_plugin.plugin_path, sizeof(g_plugin.plugin_path), "./");
-#endif
+    #endif
     }
 
 #if RIZZ_BUNDLE
     rizz__plugin_bundle();
+#elif SX_PLATFORM_WINDOWS
+    g_plugin.dbghelp = (HMODULE)sw_load_dbghelp();
+    if (g_plugin.dbghelp) {
+        fImageNtHeader = (ImageNtHeader_t)GetProcAddress(g_plugin.dbghelp, "ImageNtHeader");
+    }
+    if (!fImageNtHeader) {
+        rizz__log_error("cannot find 'ImageNtHeader' function from dbghelp.dll");
+        return false;
+    }
 #endif
 
     return true;
@@ -137,19 +159,19 @@ void rizz__plugin_release()
     if (g_plugin.plugins) {
         // unload plugins in reverse order of loading
         // so game module will be unloaded first
-#ifndef RIZZ_BUNDLE
+    #ifndef RIZZ_BUNDLE
         for (int i = sx_array_count(g_plugin.plugin_update_order) - 1; i >= 0; i--) {
             int index = g_plugin.plugin_update_order[i];
             cr_plugin_close(g_plugin.plugins[index].p);
         }
-#else
+    #else
         for (int i = sx_array_count(g_plugin.plugin_update_order) - 1; i >= 0; i--) {
             int index = g_plugin.plugin_update_order[i];
             sx_assert(g_plugin.plugins[index].info.main_cb);
             g_plugin.plugins[index].info.main_cb((rizz_plugin*)&g_plugin.plugins[index].p,
                                                  RIZZ_PLUGIN_EVENT_SHUTDOWN);
         }
-#endif
+    #endif
 
         for (int i = 0; i < sx_array_count(g_plugin.plugins); i++) {
             sx_free(g_plugin.alloc, g_plugin.plugins[i].deps);
@@ -159,6 +181,12 @@ void rizz__plugin_release()
 
     sx_array_free(g_plugin.alloc, g_plugin.injected);
     sx_array_free(g_plugin.alloc, g_plugin.plugin_update_order);
+
+    #if SX_PLATFORM_WINDOWS && !defined(RIZZ_BUNDLE)
+        if (g_plugin.dbghelp) {
+            FreeLibrary(g_plugin.dbghelp);
+        }
+    #endif
 
     sx_memset(&g_plugin, 0x0, sizeof(g_plugin));
 }
@@ -254,7 +282,7 @@ static void rizz__plugin_register(const rizz_plugin_info* info)
 
 static bool rizz__plugin_load(const char* name)
 {
-    sx_assert(!g_plugin.loaded && "cannot load anymore plugins after `init_plugins` is called");
+    sx_assertf(!g_plugin.loaded, "cannot load anymore plugins after `init_plugins` is called");
 
     return rizz__plugin_load_abs(name, false, NULL, 0);
 }
@@ -327,8 +355,6 @@ bool rizz__plugin_init_plugins()
 
     g_plugin.loaded = true;
     return true;
-
-    return true;
 }
 
 void rizz__plugin_update(float dt)
@@ -370,16 +396,16 @@ static void rizz__plugin_reload_handler(cr_plugin* plugin, const char* filename,
 
 static bool rizz__plugin_load(const char* name)
 {
-    sx_assert(!g_plugin.loaded && "cannot load anymore plugins after `init_plugins` is called");
+    sx_assertf(!g_plugin.loaded, "cannot load anymore plugins after `init_plugins` is called");
 
     // construct full filepath, by joining to root plugin path and adding extension
     char filepath[256];
-#    if SX_PLATFORM_LINUX || SX_PLATFORM_OSX || SX_PLATFORM_RPI
-    sx_os_path_join(filepath, sizeof(filepath), g_plugin.plugin_path, "lib");
-    sx_strcat(filepath, sizeof(filepath), name);
-#    else
-    sx_os_path_join(filepath, sizeof(filepath), g_plugin.plugin_path, name);
-#    endif
+    #if SX_PLATFORM_LINUX || SX_PLATFORM_OSX || SX_PLATFORM_RPI
+        sx_os_path_join(filepath, sizeof(filepath), g_plugin.plugin_path, "lib");
+        sx_strcat(filepath, sizeof(filepath), name);
+    #else
+        sx_os_path_join(filepath, sizeof(filepath), g_plugin.plugin_path, name);
+    #endif
     sx_strcat(filepath, sizeof(filepath), SX_DLL_EXT);
     return rizz__plugin_load_abs(filepath, false, NULL, 0);
 }
@@ -450,6 +476,7 @@ bool rizz__plugin_init_plugins()
         int index = g_plugin.plugin_update_order[i];
         rizz__plugin_item* item = &g_plugin.plugins[index];
 
+        rizz__mem_reload_modules();
         if (!cr_plugin_load(item->p, item->filepath, rizz__plugin_reload_handler)) {
             rizz__log_error("plugin init failed: %s", item->filepath);
             return false;
@@ -551,7 +578,6 @@ void rizz__plugin_remove_api(const char* name, uint32_t version)
 
 const char* rizz__plugin_crash_reason(rizz_plugin_crash crash)
 {
-    // clang-format off
     switch (crash) {
     case RIZZ_PLUGIN_CRASH_NONE:             return "None";
     case RIZZ_PLUGIN_CRASH_SEGFAULT:         return "EXCEPTION_ACCESS_VIOLATION";
@@ -563,9 +589,8 @@ const char* rizz__plugin_crash_reason(rizz_plugin_crash crash)
     case RIZZ_PLUGIN_CRASH_STATE_INVALIDATED:return "Global data safety error";
     case RIZZ_PLUGIN_CRASH_USER:             return "Returned -1";
     case RIZZ_PLUGIN_CRASH_OTHER:            return "Other";
-    default:                                return "Unknown";
+    default:                                 return "Unknown";
     }
-    // clang-format on
 }
 
 rizz_api_plugin the__plugin = { rizz__plugin_load,           rizz__plugin_inject_api,

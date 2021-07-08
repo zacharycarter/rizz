@@ -51,8 +51,8 @@ typedef struct sx_linear_buffer {
 } sx_linear_buffer;
 
 // internal
-static inline void sx__linear_buffer_init(sx_linear_buffer* buf, const char* parent_type,
-                                          size_t parent_size, uint32_t align sx_default(0))
+SX_INLINE void sx__linear_buffer_init(sx_linear_buffer* buf, const char* parent_type,
+                                      size_t parent_size, uint32_t align sx_default(0))
 {
     sx_assert(parent_size > 0);
 
@@ -69,8 +69,8 @@ static inline void sx__linear_buffer_init(sx_linear_buffer* buf, const char* par
     buf->num_fields = 1;
 }
 
-static inline void sx__linear_buffer_add(sx_linear_buffer* buf, size_t size, int offset_in_struct,
-                                         void** pptr, uint32_t align)
+SX_INLINE void sx__linear_buffer_add(sx_linear_buffer* buf, size_t size, int offset_in_struct,
+                                     void** pptr, uint32_t align)
 {
     sx_assert(buf);
 
@@ -85,11 +85,10 @@ static inline void sx__linear_buffer_add(sx_linear_buffer* buf, size_t size, int
         offset = sx_align_mask(offset, align - 1);
     }
 
-    buf->fields[index] = (sx_linear_buffer_field){
-        .pptr = pptr,                           //
-        .offset = offset,                       //
-        .offset_in_parent = offset_in_struct    //
-    };
+    sx_linear_buffer_field* field = &buf->fields[index];
+    field->pptr = pptr;
+    field->offset = offset;
+    field->offset_in_parent = offset_in_struct;
 
     buf->size = offset + size;
     ++buf->num_fields;
@@ -106,10 +105,11 @@ static inline void sx__linear_buffer_add(sx_linear_buffer* buf, size_t size, int
 #define sx_linear_buffer_addptr(_buf, _pptr, _type, _count, _align) \
     sx__linear_buffer_add((_buf), sizeof(_type) * (_count), -1, (void**)(_pptr), (_align))
 
-static inline void* sx_linear_buffer_calloc(const sx_linear_buffer* buf, const sx_alloc* alloc)
+SX_INLINE void* sx__linear_buffer_calloc(const sx_linear_buffer* buf, const sx_alloc* alloc, 
+                                         const char* file, const char* func, uint32_t line)
 {
     void* mem = buf->parent_align <= SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT
-                    ? sx_malloc(alloc, buf->size)
+                    ? sx__malloc(alloc, buf->size, 0, file, func, line)
                     : sx_aligned_malloc(alloc, buf->size, buf->parent_align);
     if (!mem) {
         sx_out_of_memory();
@@ -131,3 +131,37 @@ static inline void* sx_linear_buffer_calloc(const sx_linear_buffer* buf, const s
 
     return mem;
 }
+
+#define sx_linear_buffer_calloc(_buf, _alloc) sx__linear_buffer_calloc((_buf), (_alloc), __FILE__, SX_FUNCTION, __LINE__)
+
+#ifdef __cplusplus
+template <typename _T>
+struct sx_linear_buffer_t
+{
+public:
+    sx_linear_buffer_t(uint32_t align = 0)
+    {
+        sx_linear_buffer_init(&this->lb, sizeof(_T), align);
+    }
+    
+    template <typename _F> sx_linear_buffer_t& add_field(int offset_in_struct, size_t count, uint32_t align = 0)
+    {
+        sx__linear_buffer_add(&this->lb, sizeof(_F)*count, offset_in_struct, nullptr, align);
+        return *this;
+    }
+
+    template <typename _F> sx_linear_buffer_t& add_external_array(_F** pptr, size_t count, uint32_t align = 0)
+    {
+        sx__linear_buffer_add(&this->lb, sizeof(_F)*count, -1, (void**)pptr, align);
+        return *this;
+    }
+
+    _T* calloc(const sx_alloc* alloc)
+    {
+        return reinterpret_cast<_T*>(sx_linear_buffer_calloc(&this->lb, alloc));
+    }
+   
+private:
+    sx_linear_buffer lb;
+};
+#endif

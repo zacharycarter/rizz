@@ -39,6 +39,9 @@ if (NOT MACOSX_BUNDLE_ROOT_DIR)
     set (MACOSX_BUNDLE_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
+if (NOT MSVC)
+    set(CMAKE_CXX_STANDARD 14)
+endif()
 
 # output directories for binary files
 if (NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
@@ -84,6 +87,7 @@ function(rizz__add_example proj_name)
 		set_target_properties(${proj_name} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:${proj_name}>/")
 		set_target_properties(${proj_name} PROPERTIES VS_DEBUGGER_COMMAND "rizz.exe")
 		set_target_properties(${proj_name} PROPERTIES VS_DEBUGGER_COMMAND_ARGUMENTS "--run ${proj_name}.dll")
+        set_target_properties(${proj_name} PROPERTIES LINK_FLAGS "/INCREMENTAL:NO")
 	ENDIF()
 
     # compile default shaders
@@ -172,6 +176,7 @@ function(rizz_add_executable proj_name source_files)
 
     if (WIN32)
         set_target_properties(${proj_name} PROPERTIES WIN32_EXECUTABLE TRUE)
+        set_target_properties(${proj_name} PROPERTIES LINK_FLAGS "/INCREMENTAL:NO")
     endif()
 endfunction()
 
@@ -191,7 +196,7 @@ endfunction()
 add_definitions(-D__STDC_LIMIT_MACROS)
 add_definitions(-D__STDC_FORMAT_MACROS)
 add_definitions(-D__STDC_CONSTANT_MACROS)
-if(MSVC)
+if(WIN32)
     add_definitions(-D_ITERATOR_DEBUG_LEVEL=0)
     add_definitions(-D_SECURE_SCL=0)
     add_definitions(-D_HAS_EXCEPTIONS=0)
@@ -206,20 +211,41 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
     message(STATUS "Build version: ${version}")
 endif()
 
+macro(rizz_set_compile_flags_current_dir)
 if (MSVC)
     rizz__remove_compile_options(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" "/EHsc /GR")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR-")
     if (MSVC_MULTITHREADED_COMPILE AND NOT CMAKE_MAKE_PROGRAM MATCHES "ninja.exe")
         add_compile_options(/MP)    # multiprocessor compilation
     endif()
+
     if (MSVC_STATIC_RUNTIME) 
         rizz__remove_compile_options(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}" "/MD")
         rizz__remove_compile_options(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}" "/MD")
 		set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
 		set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /MT")
+
+        rizz__remove_compile_options(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" "/MDd")
+        rizz__remove_compile_options(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}" "/MDd")
+		set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+		set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /MTd")
     endif()
+
+    if (${MSVC_VERSION} GREATER_EQUAL 1928)
+        message(STATUS "MSVC compiler supports C17 standard")
+        # add_compile_options(/std:c17)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /std:c17")
+    endif()
+
+    rizz__remove_compile_options(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}" "/Ob0")
+    rizz__remove_compile_options(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}" "/Ob0")
+	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Ob1")
+	set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /Ob1")
 else()
-    add_compile_options(-Wno-deprecated-declarations -fPIC)
+    if (NOT WIN32)
+        add_compile_options(-fPIC)
+    endif()
+    add_compile_options(-Wno-deprecated-declarations)
     add_compile_options("$<$<CONFIG:Debug>:-D_DEBUG>")
     add_compile_options("$<$<CONFIG:Release>:-DNDEBUG>")
 
@@ -229,7 +255,7 @@ else()
 
     if (CMAKE_C_COMPILER_ID MATCHES "GNU")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-format-truncation")
-    endif()    
+    endif()
 endif()
 
 if (CLANG_ENABLE_PROFILER)
@@ -247,6 +273,9 @@ if (CLANG_ENABLE_PROFILER)
         endif()
     endif()
 endif()
+endmacro()
+
+rizz_set_compile_flags_current_dir()
 
 # clang-cl complains about returning structs from c-extern return type, which is valid, but we don't need them now
 if (CLANG_CL)
@@ -268,8 +297,11 @@ set(native_projects sx
                     imgui
                     2dtools
                     3dtools 
+                    astar 
+                    utility 
                     sound
-                    input)
+                    input
+                    collision)
 
 if (installed_plugins)
     message(STATUS "The following plugins are found:")
@@ -302,9 +334,13 @@ set(example_projects 01-hello
                      03-drawsprite 
                      04-animsprite
                      05-playsound
-					 06-sdf
+                     06-sdf
                      07-nbody
-                     08-draw3d)
+                     08-draw3d
+                     09-pathfind
+                     10-collideboxes
+                     11-pathspline
+                     12-boids)
                      
 # exceptions
 # currently compute-shaders are only supported on windows, so we ignore examples that use them
@@ -317,12 +353,30 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 foreach (3rdparty_project ${3rdparty_projects}) 
     add_subdirectory(3rdparty/${3rdparty_project})
     set_target_properties(${3rdparty_project} PROPERTIES FOLDER 3rdparty)
+    if (MSVC)
+        set_target_properties(${3rdparty_project} PROPERTIES LINK_FLAGS "/INCREMENTAL:NO")
+    endif()
 endforeach()
 
 foreach (native_project ${native_projects})
     add_subdirectory(src/${native_project})
     if (MSVC)
-        target_compile_options(${native_project} PRIVATE /WX)
+        if (CMAKE_MAKE_PROGRAM MATCHES "ninja.exe")
+            target_compile_options(${native_project} PRIVATE /WX /W3)
+        else()
+            target_compile_options(${native_project} PRIVATE /WX /W4)
+            target_compile_options(${native_project} PRIVATE 
+                /wd4201  # nonstandard extension used : nameless struct/union
+                /wd4324  # structure was padded due to alignment specifier
+                /wd4206  # nonstandard extension used: translation unit is empty
+                /wd4214  # nonstandard extension used: bit field types other than int
+                /wd4221  # cannot be initialized using address of automatic variable
+                /wd4053  # one void operand for
+                /wd4204  # nonstandard extension used: non-constant aggregate initializer
+                /wd4127  # conditional expression is constant (if (1)) 
+                ) 
+        endif()
+        set_target_properties(${native_project} PROPERTIES LINK_FLAGS "/INCREMENTAL:NO")
     else()
         target_compile_options(${native_project} PRIVATE 
             -Wextra 

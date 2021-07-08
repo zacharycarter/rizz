@@ -532,6 +532,11 @@ struct cr_plugin {
 #   define CR_MALLOC(size)         ::malloc(size)
 #endif
 
+#if !defined(IMAGE_NT_HEADER_FUNC) && defined(_MSC_VER)
+#pragma comment(lib, "dbghelp.lib") // attempt to link dbghelp.lib if not provided by host (dynamic loading)
+#define IMAGE_NT_HEADER_FUNC ImageNtHeader
+#endif
+
 #if defined(_MSC_VER)
 // we should probably push and pop this
 #   pragma warning(disable:4003) // not enough actual parameters for macro 'identifier'
@@ -659,23 +664,19 @@ static bool cr_plugin_rollback(cr_plugin &ctx);
 static int cr_plugin_main(cr_plugin &ctx, cr_op operation);
 static void cr_plugin_event_call(cr_plugin &ctx, const void* e);
 
-static void cr_set_temporary_path(cr_plugin &ctx, const std::string &path) {
+extern "C" void cr_set_temporary_path(cr_plugin &ctx, const std::string &path) {
     auto pimpl = (cr_internal *)ctx.p;
     pimpl->temppath = path;
 }
 
 #if defined(CR_WINDOWS)
 
-// clang-format off
 #ifndef WIN32_LEAN_AND_MEAN
 #   define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 #include <dbghelp.h>
-// clang-format on
-#ifdef _MSC_VER
-#pragma comment(lib, "dbghelp.lib")
-#endif
+
 using so_handle = HMODULE;
 
 #ifdef UNICODE
@@ -997,8 +998,8 @@ static bool cr_pdb_replace(const std::string &filename, const std::string &pdbna
     return result;
 }
 
-bool static cr_pdb_process(const std::string &source,
-                           const std::string &desination) {
+bool static cr_pdb_process(const std::string &source, const std::string &desination) {
+    (void)(source);
     std::string folder, fname, ext, orig_pdb;
     cr_split_path(desination, folder, fname, ext);
     bool result = cr_pdb_replace(desination, fname + ".pdb", orig_pdb);
@@ -1033,7 +1034,7 @@ static bool cr_plugin_validate_sections(cr_plugin &ctx, so_handle handle,
     if (p->mode == CR_DISABLE) {
         return true;
     }
-    auto ntHeaders = ImageNtHeader(handle);
+    auto ntHeaders = IMAGE_NT_HEADER_FUNC(handle);
     auto base = ntHeaders->OptionalHeader.ImageBase;
     auto sectionHeaders = (IMAGE_SECTION_HEADER *)(ntHeaders + 1);
     bool result = true;

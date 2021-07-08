@@ -7,14 +7,15 @@
 #include "sx/allocator.h"
 #include "sx/io.h"
 #include "sx/threads.h"
+#include "sx/string.h"
 
 #define rizz__json_lock()                                  \
     if (params->flags & RIZZ_ASSET_LOAD_FLAG_WAIT_ON_LOAD) \
-        sx_lock(&g_json.lock);
+        sx_lock_enter(&g_json.lock);
 
 #define rizz__json_unlock()                                \
     if (params->flags & RIZZ_ASSET_LOAD_FLAG_WAIT_ON_LOAD) \
-        sx_unlock(&g_json.lock);
+        sx_lock_exit(&g_json.lock);
 
 typedef struct rizz__json_context {
     const sx_alloc* alloc;
@@ -22,10 +23,10 @@ typedef struct rizz__json_context {
 } rizz__json_context;
 
 typedef struct rizz__json {
-    cj5_result result;
+    rizz_json j;
     sx_mem_block* source_mem;
     rizz_json_reload_cb* reload_fn;
-    void* user;
+    rizz_json_unload_cb* unload_fn;
 } rizz__json;
 
 static rizz__json_context g_json;
@@ -55,47 +56,58 @@ static bool rizz__json_on_load(rizz_asset_load_data* data, const rizz_asset_load
     const sx_alloc* alloc = params->alloc ? params->alloc : g_json.alloc;
     const rizz_json_load_params* jparams = (const rizz_json_load_params*)params->params;
     rizz__json* json = (rizz__json*)data->obj.ptr;
-    
-    const int num_tmp_tokens = 10000;
 
-    const sx_alloc* tmp_alloc = the__core.tmp_alloc_push();
-    
-    cj5_token* tmp_tokens = sx_malloc(tmp_alloc, sizeof(cj5_token)*num_tmp_tokens);
-    sx_assert_rel(tmp_tokens);
-
-    cj5_result jres = cj5_parse((const char*)mem->data, (int)mem->size, tmp_tokens, num_tmp_tokens);
-    if (jres.error) {
-        if (jres.error == CJ5_ERROR_OVERFLOW) {
-            sx_assert(jres.num_tokens > num_tmp_tokens);
-            tmp_tokens = (cj5_token*)sx_realloc(tmp_alloc, tmp_tokens, sizeof(cj5_token)*jres.num_tokens);
-            sx_assert_rel(tmp_tokens);
-            jres = cj5_parse((const char*)mem->data, (int)mem->size, tmp_tokens, jres.num_tokens);
-            if (jres.error) {
-                return false;
-            }
-        } else {
-            return false;
+    int num_tmp_tokens = 10000;
+    bool validate_tokens = false;
+    for (uint32_t i = 0; i < params->num_meta; i++) {
+        if (sx_strequal(params->metas[i].key, "num_tokens")) {
+            num_tmp_tokens = sx_toint(params->metas[i].value);
+            validate_tokens = true;
         }
     }
 
-    // allocate permanently (lock in async loading)
-    rizz__json_lock();
-    cj5_token* tokens = sx_malloc(alloc, sizeof(cj5_token)*jres.num_tokens);
-    rizz__json_unlock();
-    if (!tokens) {
-        sx_out_of_memory();
-        return false;
-    }
-    sx_memcpy(tokens, tmp_tokens, sizeof(cj5_token)*jres.num_tokens);
+    rizz__with_temp_alloc(tmp_alloc) {
+        cj5_token* tmp_tokens = sx_malloc(tmp_alloc, sizeof(cj5_token)*num_tmp_tokens);
+        sx_assert_always(tmp_tokens);
 
-    json->result = jres;
-    json->result.tokens = tokens;
-    json->source_mem = (sx_mem_block*)mem;
-    json->reload_fn = jparams->reload_fn;
-    json->user = jparams->user;
-    sx_mem_addref(json->source_mem);
+        cj5_result jres = cj5_parse((const char*)mem->data, (int)mem->size, tmp_tokens, num_tmp_tokens);
+        if (jres.error) {
+            if (jres.error == CJ5_ERROR_OVERFLOW) {
+                sx_assertf(!validate_tokens, "num_tokens embeded: %d, number of actual tokens: %d", num_tmp_tokens, jres.num_tokens);
+                sx_assert(jres.num_tokens > num_tmp_tokens);
+                tmp_tokens = (cj5_token*)sx_realloc(tmp_alloc, tmp_tokens, sizeof(cj5_token)*jres.num_tokens);
+                sx_assert_always(tmp_tokens);
+                jres = cj5_parse((const char*)mem->data, (int)mem->size, tmp_tokens, jres.num_tokens);
+                if (jres.error) {
+                    the__core.tmp_alloc_pop();
+                    return false;
+                }
+            } else {
+                the__core.tmp_alloc_pop();
+                return false;
+            }
+        }
 
-    the__core.tmp_alloc_pop();
+        // allocate permanently (lock in async loading)
+        rizz__json_lock();
+        cj5_token* tokens = sx_malloc(alloc, sizeof(cj5_token)*jres.num_tokens);
+        rizz__json_unlock();
+        if (!tokens) {
+            the__core.tmp_alloc_pop();
+            sx_out_of_memory();
+            return false;
+        }
+        sx_memcpy(tokens, tmp_tokens, sizeof(cj5_token)*jres.num_tokens);
+
+        json->j.result = jres;
+        json->j.result.tokens = tokens;
+        json->source_mem = (sx_mem_block*)mem;
+        json->reload_fn = jparams->reload_fn;
+        json->unload_fn = jparams->unload_fn;
+        json->j.user = jparams->user;
+        sx_mem_addref(json->source_mem);
+    } // tmp_alloc
+    
     return true;
 }
 
@@ -108,7 +120,7 @@ static void rizz__json_on_finalize(rizz_asset_load_data* data, const rizz_asset_
     const rizz_json_load_params* jparams = (const rizz_json_load_params*)params->params;
 
     if (jparams->load_fn) {
-        jparams->load_fn(&json->result, json->user);
+        jparams->load_fn(&json->j);
     }
 }
 
@@ -119,7 +131,7 @@ static void rizz__json_on_reload(rizz_asset handle, rizz_asset_obj prev_obj, con
     rizz__json* json = (rizz__json*)the__asset.obj_unsafe(handle).ptr;
     if (json->reload_fn) {
         rizz__json* prev_json = (rizz__json*)prev_obj.ptr;
-        json->reload_fn(&json->result, &prev_json->result, json->user);
+        json->reload_fn(&json->j, &prev_json->j);
     }
 }
 
@@ -127,12 +139,16 @@ static void rizz__json_on_release(rizz_asset_obj obj, const sx_alloc* alloc)
 {
     rizz__json* json = (rizz__json*)obj.ptr;
 
+    if (json->unload_fn) {
+        json->unload_fn(&json->j);
+    }
+
     if (!alloc) {
         alloc = g_json.alloc;    
     }
 
-    if (json->result.tokens) {
-        sx_free(alloc, (cj5_token*)json->result.tokens);
+    if (json->j.result.tokens) {
+        sx_free(alloc, (cj5_token*)json->j.result.tokens);
     }
     
     if (json->source_mem) {

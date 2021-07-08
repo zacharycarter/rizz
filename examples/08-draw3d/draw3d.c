@@ -1,9 +1,10 @@
 #include "rizz/config.h"
 #include "sx/allocator.h"
 #include "sx/io.h"
-#include "sx/math.h"
+#include "sx/math-vec.h"
 #include "sx/os.h"
 #include "sx/string.h"
+#include "sx/rng.h"
 
 #include "rizz/imgui.h"
 #include "rizz/imgui-extra.h"
@@ -21,9 +22,8 @@ RIZZ_STATE static rizz_api_imgui* the_imgui;
 RIZZ_STATE static rizz_api_asset* the_asset;
 RIZZ_STATE static rizz_api_camera* the_camera;
 RIZZ_STATE static rizz_api_vfs* the_vfs;
-RIZZ_STATE static rizz_api_prims3d* the_prims;
+RIZZ_STATE static rizz_api_3d* the_3d;
 RIZZ_STATE static rizz_api_imgui_extra* the_imguix;
-RIZZ_STATE static rizz_api_model* the_model;
 
 #define NUM_MODELS 3
 static const char* k_models[NUM_MODELS] = {
@@ -53,6 +53,7 @@ typedef enum draw3d_gizmo_type {
 } draw3d_gizmo_type;
 
 typedef struct {
+    sx_rng rng;
     rizz_gfx_stage stage;
     rizz_camera_fps cam;
     rizz_asset models[NUM_MODELS];
@@ -113,6 +114,8 @@ static bool init()
     the_vfs->mount(asset_dir, "/assets");
 #endif
 
+    sx_rng_seed_time(&g_draw3d.rng);
+
     // register main graphics stage.
     // at least one stage should be registered if you want to draw anything
     g_draw3d.stage = the_gfx->stage_register("main", (rizz_gfx_stage){ .id = 0 });
@@ -121,7 +124,8 @@ static bool init()
     // camera
     // projection: setup for perspective
     // view: Z-UP Y-Forward (like blender)
-    sx_vec2 screen_size = the_app->sizef();
+    sx_vec2 screen_size;
+    the_app->window_size(&screen_size);
     const float view_width = screen_size.x;
     const float view_height = screen_size.y;
     the_camera->fps_init(&g_draw3d.cam, 50.0f, sx_rectwh(0, 0, view_width, view_height), 0.1f, 500.0f);
@@ -136,7 +140,7 @@ static bool init()
             .vbuff_usage = SG_USAGE_IMMUTABLE, 
             .ibuff_usage = SG_USAGE_IMMUTABLE
         }, 0, NULL, 0);
-        sx_assert_rel(g_draw3d.models[i].id);
+        sx_assert_always(g_draw3d.models[i].id);
     }
 
     char shader_path[RIZZ_MAX_PATH];
@@ -172,7 +176,7 @@ static bool init()
     };
     g_draw3d.checker_tex = the_gfx->texture_create_checker(8, 128, checker_colors);
     g_draw3d.show_grid = true;
-    
+
     return true;
 }
 
@@ -214,20 +218,20 @@ static void update(float dt)
     
     if (the_imgui->Begin("draw3d", NULL, 0)) {
         the_imgui->TextWrapped("Use WASD/Arrow keys to move, Hold left mouse button to look around");
-        the_imgui->SliderFloat3("light_dir", g_draw3d.light_dir.f, -1.0f, 1.0f, "%.2f", 1.0f);
+        the_imgui->SliderFloat3("light_dir", g_draw3d.light_dir.f, -1.0f, 1.0f, "%.2f", 0);
         if (sx_equal(sx_vec3_len(g_draw3d.light_dir), 0, 0.0001f)) {
             g_draw3d.light_dir.y = 0.1f;
         }
 
-        if (the_imgui->RadioButtonBool("Translate", g_draw3d.gizmo_type == GIZMO_TYPE_TRANSLATE)) {
+        if (the_imgui->RadioButton_Bool("Translate", g_draw3d.gizmo_type == GIZMO_TYPE_TRANSLATE)) {
             g_draw3d.gizmo_type = GIZMO_TYPE_TRANSLATE;
         }
         the_imgui->SameLine(0, -1);
-        if (the_imgui->RadioButtonBool("Rotate", g_draw3d.gizmo_type == GIZMO_TYPE_ROTATE)) {
+        if (the_imgui->RadioButton_Bool("Rotate", g_draw3d.gizmo_type == GIZMO_TYPE_ROTATE)) {
             g_draw3d.gizmo_type = GIZMO_TYPE_ROTATE;
         }
         the_imgui->SameLine(0, -1);
-        if (the_imgui->RadioButtonBool("Scale", g_draw3d.gizmo_type == GIZMO_TYPE_SCALE)) {
+        if (the_imgui->RadioButton_Bool("Scale", g_draw3d.gizmo_type == GIZMO_TYPE_SCALE)) {
             g_draw3d.gizmo_type = GIZMO_TYPE_SCALE;
         }
 
@@ -238,7 +242,7 @@ static void update(float dt)
         if (the_imgui->BeginCombo("Model", k_models[g_draw3d.model_index], 0)) {
             for (int i = 0; i < 3; i++) {
                 bool selected = g_draw3d.model_index == i;
-                if (the_imgui->SelectableBool(k_models[i], selected, 0, SX_VEC2_ZERO)) {
+                if (the_imgui->Selectable_Bool(k_models[i], selected, 0, SX_VEC2_ZERO)) {
                     g_draw3d.model_index = i;
                 }
                 if (selected) {
@@ -273,8 +277,9 @@ static void render(void)
     the_gfx->staged.begin(g_draw3d.stage);
     the_gfx->staged.begin_default_pass(&pass_action, the_app->width(), the_app->height());
 
-    sx_mat4 proj = the_camera->perspective_mat(&g_draw3d.cam.cam);
-    sx_mat4 view = the_camera->view_mat(&g_draw3d.cam.cam);
+    sx_mat4 proj, view;
+    the_camera->perspective_mat(&g_draw3d.cam.cam, &proj);
+    the_camera->view_mat(&g_draw3d.cam.cam, &view);
     sx_mat4 viewproj = sx_mat4_mul(&proj, &view);
 
     // Initialize and cache 100 debug boxes
@@ -284,25 +289,30 @@ static void render(void)
     if (!init_boxes) {
         for (int i = 0; i < 100; i++) {
             boxes[i] = sx_box_set(sx_tx3d_setf(
-                (float)the_core->rand_range(-50, 50), (float)the_core->rand_range(-50, 50), 0, 
-                0, 0, sx_torad((float)the_core->rand_range(0, 90))), 
-                sx_vec3f(the_core->randf() + 1.0f, the_core->randf() + 1.0f, 1.0f)); 
-            tints[i] = sx_color4u(the_core->rand_range(0, 255), the_core->rand_range(0, 255), the_core->rand_range(0, 255), 255);
+                sx_rng_gen_rangef(&g_draw3d.rng, -50.0f, 50.0f), 
+                sx_rng_gen_rangef(&g_draw3d.rng, -50.0f, 50.0f), 
+                0, 
+                0, 0, sx_torad(sx_rng_gen_rangef(&g_draw3d.rng, 0, 90.0f))), 
+                sx_vec3f(sx_rng_genf(&g_draw3d.rng) + 0.5f, sx_rng_genf(&g_draw3d.rng) + 0.5f, 0.5f));
+            tints[i] = sx_color4u(sx_rng_gen_rangei(&g_draw3d.rng, 0, 255),
+                                  sx_rng_gen_rangei(&g_draw3d.rng, 0, 255),
+                                  sx_rng_gen_rangei(&g_draw3d.rng, 0, 255), 
+                                  255);
         }
         init_boxes = true;
     }
     
     if (g_draw3d.show_grid) {
-        the_prims->grid_xyplane_cam(1.0f, 5.0f, 50.0f, &g_draw3d.cam.cam, &viewproj);
+        the_3d->debug.grid_xyplane_cam(1.0f, 5.0f, 50.0f, &g_draw3d.cam.cam, &viewproj);
     }
 
     if (g_draw3d.show_debug_cubes) {
-        the_prims->draw_boxes(boxes, 100, &viewproj, RIZZ_PRIMS3D_MAPTYPE_CHECKER, tints);
+        the_3d->debug.draw_boxes(boxes, 100, &viewproj, RIZZ_3D_DEBUG_MAPTYPE_CHECKER, tints);
     }
 
     // model
 
-    const rizz_model* model = the_model->model_get(g_draw3d.models[g_draw3d.model_index]);
+    const rizz_model* model = the_3d->model.get(g_draw3d.models[g_draw3d.model_index]);
     draw3d_vertex_shader_uniforms vs_uniforms = { .viewproj_mat = viewproj };
     draw3d_fragment_shader_uniforms fs_uniforms = { .light_dir = sx_vec3_norm(g_draw3d.light_dir) };
     the_gfx->staged.apply_pipeline(g_draw3d.pip);
@@ -334,7 +344,7 @@ static void render(void)
             bind.index_buffer_offset = submesh->start_index * sizeof(uint16_t);
             if (submesh->mtl.id) {
                 fs_uniforms.color = sx_vec3fv(
-                    the_model->material_get(submesh->mtl)->pbr_metallic_roughness.base_color_factor.f);
+                    the_3d->material.get_data(model->mtllib, submesh->mtl)->pbr_metallic_roughness.base_color_factor.f);
             } else {
                 fs_uniforms.color = sx_vec3f(1.0f, 1.0f, 1.0f);
             }
@@ -347,17 +357,16 @@ static void render(void)
     }
 
     if (num_bounds > 0) {
-        the_prims->draw_aabbs(bounds, num_bounds, &viewproj, NULL);
-        //the_prims->draw_aabb(&bounds[0], &viewproj, SX_COLOR_WHITE);
+        the_3d->debug.draw_aabbs(bounds, num_bounds, &viewproj, NULL);
     }
 
     the_gfx->staged.end_pass();
     the_gfx->staged.end();
 
     switch (g_draw3d.gizmo_type) {
-    case GIZMO_TYPE_TRANSLATE:  the_imguix->gizmo_translate(&g_draw3d.world_mat, &view, &proj, GIZMO_MODE_WORLD, NULL, NULL); break;
-    case GIZMO_TYPE_ROTATE:     the_imguix->gizmo_rotation(&g_draw3d.world_mat, &view, &proj, GIZMO_MODE_WORLD, NULL, NULL); break;
-    case GIZMO_TYPE_SCALE:      the_imguix->gizmo_scale(&g_draw3d.world_mat, &view, &proj, GIZMO_MODE_WORLD, NULL, NULL); break;
+    case GIZMO_TYPE_TRANSLATE:  the_imguix->gizmo.translate(&g_draw3d.world_mat, &view, &proj, GIZMO_MODE_WORLD, NULL, NULL); break;
+    case GIZMO_TYPE_ROTATE:     the_imguix->gizmo.rotation(&g_draw3d.world_mat, &view, &proj, GIZMO_MODE_WORLD, NULL, NULL); break;
+    case GIZMO_TYPE_SCALE:      the_imguix->gizmo.scale(&g_draw3d.world_mat, &view, &proj, GIZMO_MODE_WORLD, NULL, NULL); break;
     }
 }
 
@@ -365,7 +374,7 @@ rizz_plugin_decl_main(draw3d, plugin, e)
 {
     switch (e) {
     case RIZZ_PLUGIN_EVENT_STEP:
-        update((float)sx_tm_sec(the_core->delta_tick()));
+        update(the_core->delta_time());
         render();
         break;
 
@@ -379,8 +388,7 @@ rizz_plugin_decl_main(draw3d, plugin, e)
         the_camera = (rizz_api_camera*)plugin->api->get_api(RIZZ_API_CAMERA, 0);
         the_imgui = (rizz_api_imgui*)plugin->api->get_api_byname("imgui", 0);
         the_imguix = (rizz_api_imgui_extra*)plugin->api->get_api_byname("imgui_extra", 0);
-        the_prims = (rizz_api_prims3d*)plugin->api->get_api_byname("prims3d", 0);
-        the_model = (rizz_api_model*)plugin->api->get_api_byname("model", 0);
+        the_3d = (rizz_api_3d*)plugin->api->get_api_byname("3dtools", 0);
 
         init();
         break;
@@ -399,7 +407,7 @@ rizz_plugin_decl_main(draw3d, plugin, e)
     return 0;
 }
 
-rizz_plugin_decl_event_handler(nbody, e)
+rizz_plugin_decl_event_handler(draw3d, e)
 {
     static bool mouse_down = false;
     float dt = (float)sx_tm_sec(the_core->delta_tick());
@@ -431,7 +439,7 @@ rizz_plugin_decl_event_handler(nbody, e)
             float dy = sx_torad(e->mouse_y - last_mouse.y) * rotate_speed * dt;
             last_mouse = sx_vec2f(e->mouse_x, e->mouse_y);
 
-            if (!the_imguix->gizmo_using() && !the_imguix->is_capturing_mouse()) {
+            if (!the_imguix->gizmo.is_using() && !the_imguix->is_capturing_mouse()) {
                 the_camera->fps_pitch(&g_draw3d.cam, dy);
                 the_camera->fps_yaw(&g_draw3d.cam, dx);
             }
@@ -444,13 +452,13 @@ rizz_plugin_decl_event_handler(nbody, e)
 
 rizz_game_decl_config(conf)
 {
-    conf->app_name = "";
+    conf->app_name = "draw3d";
     conf->app_version = 1000;
     conf->app_title = "draw3d";
     conf->app_flags |= RIZZ_APP_FLAG_HIGHDPI;
     conf->log_level = RIZZ_LOG_LEVEL_DEBUG;
-    conf->window_width = 800;
-    conf->window_height = 600;
+    conf->window_width = EXAMPLES_DEFAULT_WIDTH;
+    conf->window_height = EXAMPLES_DEFAULT_HEIGHT;
     conf->multisample_count = 4;
     conf->swap_interval = 1;
     conf->plugins[0] = "imgui";

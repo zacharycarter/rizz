@@ -1,7 +1,7 @@
 #include "rizz/2dtools.h"
 
 #include "sx/array.h"
-#include "sx/math.h"
+#include "sx/math-scalar.h"
 #include "sx/os.h"
 #include "sx/string.h"
 
@@ -71,7 +71,8 @@ static int fons__create_fn(void* user_ptr, int width, int height)
                                                               .min_filter = SG_FILTER_LINEAR,
                                                               .mag_filter = SG_FILTER_LINEAR,
                                                               .usage = SG_USAGE_DYNAMIC,
-                                                              .pixel_format = SG_PIXELFORMAT_R8 });
+                                                              .pixel_format = SG_PIXELFORMAT_R8,
+                                                              .label = fons->name});
 
     if (!fons->f.img_atlas.id) {
         return 0;
@@ -115,52 +116,51 @@ static void fons__draw_fn(void* user_ptr, const float* poss, const float* tcoord
     rizz_api_gfx_draw* draw_api = g_font.draw_api;
 
     const sx_alloc* tmp_alloc = the_core->tmp_alloc_push();
+    sx_scope(the_core->tmp_alloc_pop()) {
+        rizz_font_vertex* verts = sx_malloc(tmp_alloc, sizeof(rizz_font_vertex) * nverts);
+        sx_assert(verts);
 
-    rizz_font_vertex* verts = sx_malloc(tmp_alloc, sizeof(rizz_font_vertex) * nverts);
-    sx_assert(verts);
+        sx_assert(nverts % 3 == 0);
+        int ntris = nverts / 3;
 
-    sx_assert(nverts % 3 == 0);
-    int ntris = nverts / 3;
+        // flip the orders of each triangle, because Y is reversed (thus the triangle ordering)
+        // so the flip the triangle to properly cull with BACK
+        for (int i = 0; i < ntris; i++) {
+            int vindex = i * 3;
 
-    // flip the orders of each triangle, because Y is reversed (thus the triangle ordering)
-    // so the flip the triangle to properly cull with BACK
-    for (int i = 0; i < ntris; i++) {
-        int vindex = i * 3;
+            int findex = vindex * 2;
+            verts[vindex + 2].pos = sx_vec2f(poss[findex], poss[findex + 1]);
+            verts[vindex + 2].uv = sx_vec2f(tcoords[findex], tcoords[findex + 1]);
+            verts[vindex + 2].color = sx_colorn(colors[i]);
 
-        int findex = vindex * 2;
-        verts[vindex + 2].pos = sx_vec2f(poss[findex], poss[findex + 1]);
-        verts[vindex + 2].uv = sx_vec2f(tcoords[findex], tcoords[findex + 1]);
-        verts[vindex + 2].color = sx_colorn(colors[i]);
+            findex += 2;
+            verts[vindex + 1].pos = sx_vec2f(poss[findex], poss[findex + 1]);
+            verts[vindex + 1].uv = sx_vec2f(tcoords[findex], tcoords[findex + 1]);
+            verts[vindex + 1].color = sx_colorn(colors[i]);
 
-        findex += 2;
-        verts[vindex + 1].pos = sx_vec2f(poss[findex], poss[findex + 1]);
-        verts[vindex + 1].uv = sx_vec2f(tcoords[findex], tcoords[findex + 1]);
-        verts[vindex + 1].color = sx_colorn(colors[i]);
+            findex += 2;
+            verts[vindex].pos = sx_vec2f(poss[findex], poss[findex + 1]);
+            verts[vindex].uv = sx_vec2f(tcoords[findex], tcoords[findex + 1]);
+            verts[vindex].color = sx_colorn(colors[i]);
+        }
 
-        findex += 2;
-        verts[vindex].pos = sx_vec2f(poss[findex], poss[findex + 1]);
-        verts[vindex].uv = sx_vec2f(tcoords[findex], tcoords[findex + 1]);
-        verts[vindex].color = sx_colorn(colors[i]);
-    }
+        int vb_offset = draw_api->append_buffer(g_font.vbuff, verts, sizeof(rizz_font_vertex) * nverts);
 
-    int vb_offset = draw_api->append_buffer(g_font.vbuff, verts, sizeof(rizz_font_vertex) * nverts);
+        sg_bindings bindings = { .vertex_buffers[0] = g_font.vbuff,
+                                 .vertex_buffer_offsets[0] = vb_offset,
+                                 .fs_images[0] = fons->f.img_atlas };
 
-    sg_bindings bindings = { .vertex_buffers[0] = g_font.vbuff,
-                             .vertex_buffer_offsets[0] = vb_offset,
-                             .fs_images[0] = fons->f.img_atlas };
+        FONSstate* state = fons__getState(fons->ctx);
 
-    FONSstate* state = fons__getState(fons->ctx);
-
-    draw_api->apply_pipeline(g_font.pip);
-    draw_api->apply_bindings(&bindings);
-    if (state->scissor[2] > 0 && state->scissor[3] > 0) {
-        draw_api->apply_scissor_rect(state->scissor[0], state->scissor[1], state->scissor[2],
-                                     state->scissor[3], !the_gfx->GL_family());
-    }
-    draw_api->apply_uniforms(SG_SHADERSTAGE_VS, 0, state->mat, sizeof(state->mat));
-    draw_api->draw(0, nverts, 1);
-
-    the_core->tmp_alloc_pop();
+        draw_api->apply_pipeline(g_font.pip);
+        draw_api->apply_bindings(&bindings);
+        if (state->scissor[2] > 0 && state->scissor[3] > 0) {
+            draw_api->apply_scissor_rect(state->scissor[0], state->scissor[1], state->scissor[2],
+                                         state->scissor[3], !the_gfx->GL_family());
+        }
+        draw_api->apply_uniforms(SG_SHADERSTAGE_VS, 0, state->mat, sizeof(state->mat));
+        draw_api->draw(0, nverts, 1);
+    } // scope
 }
 
 static void fons__delete_fn(void* user_ptr)
@@ -222,6 +222,10 @@ static rizz_asset_load_data font__fons_on_prepare(const rizz_asset_load_params* 
     fons->f.img_height = atlas_height;
     fons->f.img_atlas.id = 0;
     fons->ignore_dpiscale = fparams->ignore_dpiscale;
+
+    char name[64];
+    sx_os_path_basename(name, sizeof(name), params->path);
+    sx_strcpy(fons->name, sizeof(fons->name), name);
 
     fons->ctx = fonsCreateInternal(&(FONSparams){ .width = atlas_width,
                                                   .height = atlas_height,
@@ -326,10 +330,12 @@ bool font__resize_draw_limits(int max_verts)
         return true;
     }
 
-    g_font.vbuff =
-        the_gfx->make_buffer(&(sg_buffer_desc){ .size = sizeof(rizz_sprite_vertex) * max_verts,
-                                                .usage = SG_USAGE_STREAM,
-                                                .type = SG_BUFFERTYPE_VERTEXBUFFER });
+    g_font.vbuff = the_gfx->make_buffer(&(sg_buffer_desc)
+        { .size = sizeof(rizz_sprite_vertex) * max_verts,
+          .usage = SG_USAGE_STREAM,
+          .type = SG_BUFFERTYPE_VERTEXBUFFER,
+          .label = "font_vbuff"
+    });
 
     return g_font.vbuff.id;
 }
@@ -361,23 +367,25 @@ bool font__init(rizz_api_core* core, rizz_api_asset* asset, rizz_api_gfx* gfx, r
 
     // gfx objects
     const sx_alloc* tmp_alloc = the_core->tmp_alloc_push();
-    rizz_shader shader = the_gfx->shader_make_with_data(
-        tmp_alloc, k_font_vs_size, k_font_vs_data, k_font_vs_refl_size, k_font_vs_refl_data,
-        k_font_fs_size, k_font_fs_data, k_font_fs_refl_size, k_font_fs_refl_data);
-    g_font.shader = shader.shd;
+    sx_scope(the_core->tmp_alloc_pop()) {
+        rizz_shader shader = the_gfx->shader_make_with_data(
+            tmp_alloc, k_font_vs_size, k_font_vs_data, k_font_vs_refl_size, k_font_vs_refl_data,
+            k_font_fs_size, k_font_fs_data, k_font_fs_refl_size, k_font_fs_refl_data);
+        g_font.shader = shader.shd;
 
-    // note: when we make the geometry, we modify the
-    sg_pipeline_desc pip_desc =
-        (sg_pipeline_desc){ .layout.buffers[0].stride = sizeof(rizz_font_vertex),
-                            .rasterizer = { .cull_mode = SG_CULLMODE_BACK },
-                            .blend = { .enabled = true,
-                                       .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-                                       .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA } };
+        // note: when we make the geometry, we modify the
+        sg_pipeline_desc pip_desc =
+            (sg_pipeline_desc){ .layout.buffers[0].stride = sizeof(rizz_font_vertex),
+                                .rasterizer = { .cull_mode = SG_CULLMODE_BACK },
+                                .blend = { .enabled = true,
+                                           .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
+                                           .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA },
+                                .label = "rizz_font" };
 
-    g_font.pip = the_gfx->make_pipeline(
-        the_gfx->shader_bindto_pipeline(&shader, &pip_desc, &k_font_vertex_layout));
+        g_font.pip = the_gfx->make_pipeline(
+            the_gfx->shader_bindto_pipeline(&shader, &pip_desc, &k_font_vertex_layout));
+    } // scope
 
-    the_core->tmp_alloc_pop();
 
     if (!font__resize_draw_limits(MAX_VERTICES)) {
         return false;
@@ -466,7 +474,7 @@ void font__release(void)
 const rizz_font* font__get(rizz_asset font_asset)
 {
 #if RIZZ_DEV_BUILD
-    sx_assert_rel(sx_strequal(the_asset->type_name(font_asset), "font") && "asset handle is not a font");
+    sx_assert_always(sx_strequal(the_asset->type_name(font_asset), "font") && "asset handle is not a font");
 #endif
     return (const rizz_font*)the_asset->obj(font_asset).ptr;
 }

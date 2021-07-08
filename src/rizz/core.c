@@ -6,27 +6,30 @@
 
 #include "rizz/imgui.h"
 #include "rizz/imgui-extra.h"
-
 #include "rizz/rizz.h"
+
 #include "sx/allocator.h"
 #include "sx/array.h"
 #include "sx/atomic.h"
 #include "sx/hash.h"
 #include "sx/jobs.h"
 #include "sx/lockless.h"
+#include "sx/macros.h"
 #include "sx/os.h"
-#include "sx/rng.h"
-#include "sx/stack-alloc.h"
 #include "sx/string.h"
 #include "sx/threads.h"
 #include "sx/timer.h"
 #include "sx/vmem.h"
+#include "sx/pool.h"
 
 #include <alloca.h>
 #include <stdio.h>
 #include <time.h>
 
 #include "Remotery.h"
+
+#define MAX_TEMP_ALLOC_WAIT_TIME 2.0
+#define RMT_SMALL_MEMORY_SIZE 160
 
 #if SX_PLATFORM_ANDROID
 #    include <android/log.h>
@@ -41,11 +44,11 @@ __declspec(dllimport) void __stdcall OutputDebugStringA(const char* lpOutputStri
 #define rmt__end_cpu_sample() RMT_OPTIONAL(RMT_ENABLED, _rmt_EndCPUSample())
 
 // cj5 implementation, external modules (non-static build) should implement it for themselves
-#define CJ5_ASSERT(e)		sx_assert(e);
+#define CJ5_ASSERT(e)		sx_assert(e)
 #define CJ5_IMPLEMENT
 #include "cj5/cj5.h"
 
-#define DEFAULT_TMP_SIZE    0x500000    // 5mb
+#define DEFAULT_TMP_SIZE    0xA00000    // 10mb
 
 #if SX_PLATFORM_WINDOWS || SX_PLATFORM_IOS || SX_PLATFORM_ANDROID
 #   define TERM_COLOR_RESET     ""
@@ -60,7 +63,6 @@ __declspec(dllimport) void __stdcall OutputDebugStringA(const char* lpOutputStri
 #   define TERM_COLOR_GREEN     "\033[32m"
 #   define TERM_COLOR_DIM       "\033[2m"
 #endif
-// clang-format on
 
 static const char* k__memid_names[_RIZZ_MEMID_COUNT] = { "Core",          //
                                                          "Graphics",      //
@@ -74,33 +76,60 @@ static const char* k__memid_names[_RIZZ_MEMID_COUNT] = { "Core",          //
                                                          "Game" };
 
 
-typedef struct rizz__core_tmpalloc {
+typedef struct rizz__core_tmpalloc rizz__core_tmpalloc;
+typedef struct rizz__core_tmpalloc_inst {
     sx_alloc alloc;
+    rizz__core_tmpalloc* parent;      // pointer to parent rizz__core_tmpalloc
+    size_t end_offset;
+    size_t start_offset;
+    size_t start_lastptr_offset;
+    int depth;
+    const char* file;
+    uint32_t line;
+} rizz__core_tmpalloc_inst;
+
+typedef struct rizz__core_tmpalloc {
     sx_vmem_context vmem;
-    sx_stackalloc stack_alloc;
-    size_t* offset_stack;    // sx_array - keep offsets in a stack for push()/pop()
+    rizz__core_tmpalloc_inst* alloc_stack;    // sx_array - stack for push()/pop()
+    sx_atomic_int stack_depth;
+    float wait_time;
+    size_t peak;
+    size_t frame_peak;
 } rizz__core_tmpalloc;
+
+typedef struct rizz__core_tmpalloc_debug_item {
+    void* ptr;
+    size_t size;
+    char file[32];
+    uint32_t line;
+} rizz__core_tmpalloc_debug_item;
+
+typedef struct rizz__core_tmpalloc_debug rizz__core_tmpalloc_debug;
+typedef struct rizz__core_tmpalloc_debug_inst {
+    sx_alloc alloc;
+    rizz__core_tmpalloc_debug* owner;
+    int item_idx;
+    const char* file;
+    uint32_t line;
+} rizz__core_tmpalloc_debug_inst;
+
+// debug temp-allocator is a replacement for tmpalloc, which allocates from heap instead of linear alloc
+typedef struct rizz__core_tmpalloc_debug {
+    size_t offset;
+    size_t max_size;
+    size_t peak;
+    size_t frame_peak;
+    sx_atomic_int stack_depth;
+    float wait_time;
+    rizz__core_tmpalloc_debug_item* items;          // sx_array: allocated items within 
+    rizz__core_tmpalloc_debug_inst* alloc_stack;    // sx_array - stack for push()/pop() api
+} rizz__core_tmpalloc_debug;
 
 typedef struct rizz__core_cmd {
     char name[32];
     rizz_core_cmd_cb* callback;
+    void* user;
 } rizz__core_cmd;
-
-typedef struct rizz__proxy_alloc_header {
-    intptr_t size;
-    uint32_t ptr_offset;
-    int track_item_idx;
-} rizz__proxy_alloc_header;
-
-typedef struct rizz__track_alloc {
-    sx_alloc alloc;
-    int mem_id;
-    const char* name;
-    int64_t size;
-    int64_t peak;
-    sx_lock_t _lk;
-    rizz_track_alloc_item* items;    // sx_array
-} rizz__track_alloc;
 
 typedef struct rizz__tls_var {
     uint32_t name_hash;
@@ -139,13 +168,8 @@ typedef struct rizz__show_debugger_deferred {
 
 typedef struct rizz__core {
     const sx_alloc* heap_alloc;
-    sx_alloc heap_proxy_alloc;
-    rizz__track_alloc track_allocs[_RIZZ_MEMID_COUNT];
-    sx_atomic_int heap_count;
-    sx_atomic_size heap_size;
-    sx_atomic_size heap_max;
+    sx_alloc* track_allocs[_RIZZ_MEMID_COUNT];
 
-    sx_rng rng;
     sx_job_context* jobs;
     sx_coro_context* coro;
 
@@ -166,10 +190,13 @@ typedef struct rizz__core {
     char logfile[32];
     rizz_log_level log_level;
 
-    rizz__core_tmpalloc* tmp_allocs;    // count: num_threads
-    rizz__log_pipe* log_pipes;          // count: num_threads
+    rizz__core_tmpalloc* tmp_allocs;                // count: num_threads
+    rizz__core_tmpalloc_debug* tmp_debug_allocs;    // count: num_threads
+    rizz__log_pipe* log_pipes;                      // count: num_threads
 
     Remotery* rmt;
+    sx_queue_spsc* rmt_command_queue;   // type: char*, producer: remotery thread, consumer: main thread
+    
     rizz__core_cmd* console_cmds;       // sx_array
     rizz__log_backend* log_backends;    // sx_array
     rizz__tls_var* tls_vars;            // sx_array
@@ -178,6 +205,12 @@ typedef struct rizz__core {
     rizz__show_debugger_deferred show_memory;
     rizz__show_debugger_deferred show_graphics;
     rizz__show_debugger_deferred show_log;
+    
+    sx_mutex rmt_mtx;
+    sx_pool* rmt_alloc_pool;
+    sx_strpool* strpool;
+
+    bool paused;
 } rizz__core;
 
 #define SORT_NAME log__sort_entries
@@ -187,6 +220,7 @@ SX_PRAGMA_DIAGNOSTIC_PUSH()
 SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4267)
 SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4244)
 SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4146)
+SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(4505)
 SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG_GCC("-Wunused-function")
 SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG("-Wshorten-64-to-32")
 #include "sort/sort.h"
@@ -196,13 +230,13 @@ static rizz__core g_core;
 
 static const sx_alloc* rizz__alloc(rizz_mem_id id)
 {
-#if RIZZ_CONFIG_DEBUG_MEMORY
-    sx_assert(id < _RIZZ_MEMID_COUNT);
-    return &g_core.track_allocs[id].alloc;
-#else
-    sx_unused(id);
-    return &g_core.heap_proxy_alloc;
-#endif
+    #if RIZZ_CONFIG_DEBUG_MEMORY
+        sx_assert(id < _RIZZ_MEMID_COUNT);
+        return g_core.track_allocs[id];
+    #else
+        sx_unused(id);
+        return &g_core.heap_alloc;
+    #endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -254,7 +288,7 @@ static void rizz__log_register_backend(const char* name,
 {    // backend name must be unique
     for (int i = 0, c = sx_array_count(g_core.log_backends); i < c; i++) {
         if (sx_strequal(g_core.log_backends[i].name, name)) {
-            sx_assert_rel(0 && "duplicate backend name/already registered?");
+            sx_assert_alwaysf(0, "duplicate backend name/already registered?");
             return;
         }
     }
@@ -312,7 +346,7 @@ static void rizz__log_backend_debugger(const rizz_log_entry* entry, void* user)
                     entry->text);
         OutputDebugStringA(text);
     } else {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
     }
 #else
     sx_unused(entry);
@@ -331,22 +365,20 @@ static void rizz__log_backend_terminal(const rizz_log_entry* entry, void* user)
         const char* close_fmt;
 
         // terminal coloring
-        // clang-format off
 		switch (entry->type) {
         case RIZZ_LOG_LEVEL_INFO:		open_fmt = "";  close_fmt = "";	break;
         case RIZZ_LOG_LEVEL_DEBUG:		open_fmt = TERM_COLOR_DIM; close_fmt = TERM_COLOR_RESET; break;
         case RIZZ_LOG_LEVEL_VERBOSE:	open_fmt = TERM_COLOR_DIM; close_fmt = TERM_COLOR_RESET; break;
-        case RIZZ_LOG_LEVEL_WARNING:	open_fmt = TERM_COLOR_RED; close_fmt = TERM_COLOR_RESET; break;
-        case RIZZ_LOG_LEVEL_ERROR:		open_fmt = TERM_COLOR_YELLOW; close_fmt = TERM_COLOR_RESET; break;
+        case RIZZ_LOG_LEVEL_WARNING:	open_fmt = TERM_COLOR_YELLOW; close_fmt = TERM_COLOR_RESET; break;
+        case RIZZ_LOG_LEVEL_ERROR:		open_fmt = TERM_COLOR_RED; close_fmt = TERM_COLOR_RESET; break;
 		default:			    		open_fmt = "";	close_fmt = "";	break;
         }
-        // clang-format on
 
         sx_snprintf(text, new_size, "%s%s%s%s", open_fmt, k_log_entry_types[entry->type],
                     entry->text, close_fmt);
         puts(text);
     } else {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
     }
 }
 
@@ -392,7 +424,7 @@ static void rizz__log_backend_android(const rizz_log_entry* entry, void* user)
         sx_snprintf(text, new_size, "%s: %s", source, entry->text);
         __android_log_write(apriority, g_core.app_name, text);
     } else {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_always(0 && "out of stack memory");
     }
 }
 #endif // SX_PLATFORM_ANDROID
@@ -411,13 +443,12 @@ static void rizz__log_backend_remotery(const rizz_log_entry* entry, void* user)
         sx_snprintf(text, new_size, "%s%s%s", source, k_log_entry_types[entry->type], entry->text);
         rmt_LogText(text);
     } else {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
     }
 }
 
-static void rizz__log_dispatch_entry(const rizz_log_entry* entry)
+static void rizz__log_dispatch_entry(rizz_log_entry* entry)
 {
-    
     // built-in backends are thread-safe, so we pass them immediately
     rizz__log_backend_terminal(entry, NULL);
     rizz__log_backend_debugger(entry, NULL);
@@ -427,13 +458,16 @@ static void rizz__log_dispatch_entry(const rizz_log_entry* entry)
 #endif
 
     if (g_core.num_log_backends > 0) {
+        if (entry->channels == 0) {
+            entry->channels = 0xffffffff;
+        }
+
         rizz__log_pipe pipe =
             g_core.jobs ? g_core.log_pipes[sx_job_thread_index(g_core.jobs)] : g_core.log_pipes[0];
 
         sx_str_t text = sx_strpool_add(pipe.strpool, entry->text, entry->text_len);
         sx_str_t source = entry->source_file ? sx_strpool_add(pipe.strpool, entry->source_file,
-                                                              entry->source_file_len)
-                                             : 0;
+                                                              entry->source_file_len) : 0;
         rizz__log_entry_internal entry_internal = { .e = *entry,
                                                     .text_id = text,
                                                     .source_id = source,
@@ -447,8 +481,7 @@ static void rizz__set_log_level(rizz_log_level level)
     g_core.log_level = level;
 }
 
-static void rizz__print_info(uint32_t channels, const char* source_file, int line, const char* fmt,
-                             ...)
+static void rizz__print_info(uint32_t channels, const char* source_file, int line, const char* fmt, ...)
 {
     if (g_core.log_level < RIZZ_LOG_LEVEL_INFO) {
         return;
@@ -457,7 +490,7 @@ static void rizz__print_info(uint32_t channels, const char* source_file, int lin
     int fmt_len = sx_strlen(fmt);
     char* text = alloca(fmt_len + 1024);    // reserve only 1k for format replace strings
     if (!text) {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
         return;
     }
 
@@ -475,8 +508,7 @@ static void rizz__print_info(uint32_t channels, const char* source_file, int lin
                                                 .line = line });
 }
 
-static void rizz__print_debug(uint32_t channels, const char* source_file, int line, const char* fmt,
-                              ...)
+static void rizz__print_debug(uint32_t channels, const char* source_file, int line, const char* fmt, ...)
 {
 #ifdef _DEBUG
     if (g_core.log_level < RIZZ_LOG_LEVEL_DEBUG) {
@@ -486,7 +518,7 @@ static void rizz__print_debug(uint32_t channels, const char* source_file, int li
     int fmt_len = sx_strlen(fmt);
     char* text = alloca(fmt_len + 1024);    // reserve only 1k for format replace strings
     if (!text) {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
         return;
     }
 
@@ -510,8 +542,7 @@ static void rizz__print_debug(uint32_t channels, const char* source_file, int li
 #endif  // else _DEBUG
 }
 
-static void rizz__print_verbose(uint32_t channels, const char* source_file, int line,
-                                const char* fmt, ...)
+static void rizz__print_verbose(uint32_t channels, const char* source_file, int line, const char* fmt, ...)
 {
     if (g_core.log_level < RIZZ_LOG_LEVEL_VERBOSE) {
         return;
@@ -520,7 +551,7 @@ static void rizz__print_verbose(uint32_t channels, const char* source_file, int 
     int fmt_len = sx_strlen(fmt);
     char* text = alloca(fmt_len + 1024);    // reserve only 1k for format replace strings
     if (!text) {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
         return;
     }
 
@@ -538,8 +569,7 @@ static void rizz__print_verbose(uint32_t channels, const char* source_file, int 
                                                 .line = line });
 }
 
-static void rizz__print_error(uint32_t channels, const char* source_file, int line, const char* fmt,
-                              ...)
+static void rizz__print_error(uint32_t channels, const char* source_file, int line, const char* fmt, ...)
 {
     if (g_core.log_level < RIZZ_LOG_LEVEL_ERROR) {
         return;
@@ -548,7 +578,7 @@ static void rizz__print_error(uint32_t channels, const char* source_file, int li
     int fmt_len = sx_strlen(fmt);
     char* text = alloca(fmt_len + 1024);    // reserve only 1k for format replace strings
     if (!text) {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
         return;
     }
 
@@ -576,7 +606,7 @@ static void rizz__print_warning(uint32_t channels, const char* source_file, int 
     int fmt_len = sx_strlen(fmt);
     char* text = alloca(fmt_len + 1024);    // reserve only 1k for format replace strings
     if (!text) {
-        sx_assert_rel(0 && "out of stack memory");
+        sx_assert_alwaysf(0, "out of stack memory");
         return;
     }
 
@@ -596,70 +626,95 @@ static void rizz__print_warning(uint32_t channels, const char* source_file, int 
 
 static void rizz__log_update()
 {
-    const sx_alloc* tmp_alloc = the__core.tmp_alloc_push();
-    rizz__log_entry_internal_ref* entries = NULL;
+    rizz__with_temp_alloc(tmp_alloc) {
+        rizz__log_entry_internal_ref* entries = NULL;
     
-    // collect all log entries from threads and sort them by timestamp
-    for (int ti = 0, tc = g_core.num_threads; ti < tc; ti++) {
-        rizz__log_pipe pipe = g_core.log_pipes[ti];
-        rizz__log_entry_internal_ref entry;
-        entry.pipe_idx = ti;
-        while (sx_queue_spsc_consume(pipe.queue, &entry.e)) {
-            entry.e.e.text = sx_strpool_cstr(pipe.strpool, entry.e.text_id);
-            entry.e.e.source_file =
-                entry.e.source_id ? sx_strpool_cstr(pipe.strpool, entry.e.source_id) : NULL;
-            sx_array_push(tmp_alloc, entries, entry);
+        // collect all log entries from threads and sort them by timestamp
+        for (int ti = 0, tc = g_core.num_threads; ti < tc; ti++) {
+            rizz__log_pipe pipe = g_core.log_pipes[ti];
+            rizz__log_entry_internal_ref entry;
+            entry.pipe_idx = ti;
+            while (sx_queue_spsc_consume(pipe.queue, &entry.e)) {
+                entry.e.e.text = sx_strpool_cstr(pipe.strpool, entry.e.text_id);
+                entry.e.e.source_file =
+                    entry.e.source_id ? sx_strpool_cstr(pipe.strpool, entry.e.source_id) : NULL;
+                sx_array_push(tmp_alloc, entries, entry);
+            }
+        } // foreach thread
+    
+        int num_entries = sx_array_count(entries);
+        if (num_entries > 1) {
+            log__sort_entries_tim_sort(entries, num_entries);
         }
-    } // foreach thread
-    
-    int num_entries = sx_array_count(entries);
-    if (num_entries > 1) {
-        log__sort_entries_tim_sort(entries, num_entries);
-    }
 
-    if (num_entries > 0) {
-        for (int i = 0, c = sx_array_count(g_core.log_backends); i < c; i++) {
-            const rizz__log_backend* backend = &g_core.log_backends[i];
+        if (num_entries > 0) {
+            for (int i = 0, c = sx_array_count(g_core.log_backends); i < c; i++) {
+                const rizz__log_backend* backend = &g_core.log_backends[i];
 
-            for (int ei = 0; ei < num_entries; ei++) {
-                rizz__log_entry_internal_ref entry = entries[ei];
-                rizz__log_pipe pipe = g_core.log_pipes[entry.pipe_idx];
+                for (int ei = 0; ei < num_entries; ei++) {
+                    rizz__log_entry_internal_ref entry = entries[ei];
+                    rizz__log_pipe pipe = g_core.log_pipes[entry.pipe_idx];
 
-                backend->log_cb(&entry.e.e, backend->user);
+                    backend->log_cb(&entry.e.e, backend->user);
 
-                if (entry.e.text_id) {
-                    sx_strpool_del(pipe.strpool, entry.e.text_id);
-                }
-                if (entry.e.source_id) {
-                    sx_strpool_del(pipe.strpool, entry.e.source_id);
-                }
-            }    // foreach entry
-        } // foreach backend
-    }
-    
-    the__core.tmp_alloc_pop();
+                    if (entry.e.text_id) {
+                        sx_strpool_del(pipe.strpool, entry.e.text_id);
+                    }
+                    if (entry.e.source_id) {
+                        sx_strpool_del(pipe.strpool, entry.e.source_id);
+                    }
+                }    // foreach entry
+            } // foreach backend
+        }
+    }  // tmp_alloc
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
 static void* rmt__malloc(void* ctx, uint32_t size)
 {
-    return sx_malloc((const sx_alloc*)ctx, size);
+    const sx_alloc* fallback_alloc = (const sx_alloc*)ctx;
+    if (size <= RMT_SMALL_MEMORY_SIZE) {
+        sx_mutex_enter(&g_core.rmt_mtx);
+        void* ptr = sx_pool_new_and_grow(g_core.rmt_alloc_pool, fallback_alloc);
+        sx_mutex_exit(&g_core.rmt_mtx);
+        return ptr;
+    } else {
+        return sx_malloc(fallback_alloc, size);
+    }
 }
 
 static void rmt__free(void* ctx, void* ptr)
 {
-    sx_free((const sx_alloc*)ctx, ptr);
+    const sx_alloc* fallback_alloc = (const sx_alloc*)ctx;
+    if (ptr) {
+        if (sx_pool_valid_ptr(g_core.rmt_alloc_pool, ptr)) {
+            sx_mutex_lock(g_core.rmt_mtx) {
+                sx_pool_del(g_core.rmt_alloc_pool, ptr);
+            }
+            sx_mutex_exit(&g_core.rmt_mtx);
+        } else {
+            sx_free(fallback_alloc, ptr);
+        }
+    }
 }
 
 static void* rmt__realloc(void* ctx, void* ptr, uint32_t size)
 {
-    return sx_realloc((const sx_alloc*)ctx, ptr, size);
+    const sx_alloc* fallback_alloc = (const sx_alloc*)ctx;
+    if (sx_pool_valid_ptr(g_core.rmt_alloc_pool, ptr)) {
+        sx_mutex_lock(g_core.rmt_mtx) {
+            sx_pool_del(g_core.rmt_alloc_pool, ptr);
+        }
+    } else {
+        sx_free(fallback_alloc, ptr);
+    }
+    
+    return rmt__malloc(ctx, size);
 }
 
 static const sx_alloc* rizz__heap_alloc(void)
 {
-    return &g_core.heap_proxy_alloc;
+    return g_core.heap_alloc;
 }
 
 static uint64_t rizz__delta_tick(void)
@@ -725,7 +780,7 @@ static void rizz__log_init_file(const char* logfile)
         fprintf(f, "%s", asctime(localtime(&t)));
         fclose(f);
     } else {
-        sx_assert(0 && "could not write to log file");
+        sx_assertf(0, "could not write to log file");
         g_core.flags &= ~RIZZ_CORE_FLAG_LOG_TO_FILE;
     }
 }
@@ -753,15 +808,138 @@ static void rizz__job_thread_shutdown_cb(sx_job_context* ctx, int thread_index, 
 
 static void rizz__rmt_input_handler(const char* text, void* context)
 {
+    const sx_alloc* alloc = context;
+    int len = sx_strlen(text);
+    if (len > 0) {
+        char* str = sx_malloc(alloc, len + 1);
+        if (str) {
+            sx_memcpy(str, text, len + 1);
+            sx_queue_spsc_produce(g_core.rmt_command_queue, (const void*)&str);
+        }
+    }
+}
+
+static void rizz__rmt_read_string(sx_mem_reader* r, char* str, uint32_t size)
+{
+    uint32_t len;
+    uint32_t max_len = size - 1;
+    sx_mem_read(r, &len, sizeof(len));
+    sx_mem_read(r, str, sx_min(max_len, len));
+    str[len] = '\0';
+}
+
+static void rizz__rmt_read_sample(sx_mem_reader* r)
+{
+    uint32_t name_hash;
+    uint32_t unique_id;
+    uint8_t unique_id_html_color[7];
+    double us_start;
+    double us_length;
+    double us_self;
+    uint32_t num_calls;
+    uint32_t max_recurse_depth;
+    sx_mem_read(r, &name_hash, sizeof(name_hash));
+    sx_mem_read(r, &unique_id, sizeof(unique_id));
+    sx_mem_read(r, &unique_id_html_color, sizeof(unique_id_html_color));
+    sx_mem_read(r, &us_start, sizeof(us_start));
+    sx_mem_read(r, &us_length, sizeof(us_length));
+    sx_mem_read(r, &us_self, sizeof(us_self));
+    sx_mem_read(r, &num_calls, sizeof(num_calls));
+    sx_mem_read(r, &max_recurse_depth, sizeof(max_recurse_depth));
+
+    float length_ms = (float)us_length / 1000.0f;
+    float self_ms = (float)us_self / 1000.0f;
+
+    char msg[256];
+    sx_snprintf(msg, sizeof(msg), "\tname: 0x%x, Time: %.3f, Self: %.3f\n", name_hash, length_ms, self_ms);
+    //OutputDebugStringA(msg);
+
+    uint32_t num_childs;
+    sx_mem_read(r, &num_childs, sizeof(num_childs));
+    for (uint32_t i = 0; i < num_childs; i++) {
+        rizz__rmt_read_sample(r);
+    }
+}
+
+// TODO: override this for remotery and capture the frames
+static void rizz__rmt_view_handler(const void* data, uint32_t size, void* context)
+{
     sx_unused(context);
 
+    sx_mem_reader r;
+    sx_mem_init_reader(&r, data, size);
+
+    const uint32_t smpl_fourcc = sx_makefourcc('S', 'M', 'P', 'L');
+
+    #define WEBSOCKET_MAX_FRAME_HEADER_SIZE 10
+    char empty_frame_header[WEBSOCKET_MAX_FRAME_HEADER_SIZE];
+    sx_mem_read(&r, empty_frame_header, sizeof(empty_frame_header));
+
+    uint32_t buff_size = *((uint32_t*)(empty_frame_header + 4));
+    sx_unused(buff_size);
+
+    uint32_t flag[2];
+    sx_mem_read(&r, flag, sizeof(flag));
+    if (flag[0] != smpl_fourcc) {
+        return;
+    }
+
+    char thread_name[256];
+    uint32_t num_samples;
+    uint32_t digest_hash;
+    rizz__rmt_read_string(&r, thread_name, sizeof(thread_name));
+    sx_mem_read(&r, &num_samples, sizeof(num_samples));
+    sx_mem_read(&r, &digest_hash, sizeof(digest_hash));
+
+    //char msg[256];
+    //sx_snprintf(msg, sizeof(msg), "%s:\n", thread_name);
+    // OutputDebugStringA(msg);
+
+    // read sample tree
+    rizz__rmt_read_sample(&r);
+
+    return;
+}
+
+static void rizz__console_shortcut_callback(void* user)
+{
+    rizz__core_cmd* c = user;
+    the__core.execute_console_command(c->name);
+}
+
+static void rizz__register_console_command(const char* cmd, rizz_core_cmd_cb* callback, 
+                                           const char* shortcut, void* user)
+{
+    sx_assert(cmd);
+    sx_assert(cmd[0]);
+    sx_assert(callback);
+
+    rizz__core_cmd c;
+    sx_strcpy(c.name, sizeof(c.name), cmd);
+    c.callback = callback;
+    c.user = user;
+    sx_array_push(rizz__alloc(RIZZ_MEMID_CORE), g_core.console_cmds, c);
+
+    if (shortcut && shortcut[0]) {
+        the__app.register_shortcut(shortcut, rizz__console_shortcut_callback, &sx_array_last(g_core.console_cmds));
+    }
+}
+
+static void rizz__execute_console_command(const char* cmd_and_args)
+{
     // parse text into argc/argv
     int argc = 0;
     char arg[256];
 
-    const char* cline = sx_skip_whitespace(text);
+    const char* cline = sx_skip_whitespace(cmd_and_args);
     while (cline && *cline) {
         for (char c = *cline; !sx_isspace(c) && *cline; c = *(++cline)) {
+            if (*cline == '\"') {
+                sx_str_block block = sx_findblock(cline, '\"', '\"');
+                if (block.end) {
+                    cline = block.end + 1;
+                }
+            }
         }
         cline = sx_skip_whitespace(cline);
         argc++;
@@ -773,13 +951,22 @@ static void rizz__rmt_input_handler(const char* text, void* context)
     char** argv = sx_malloc(alloc, sizeof(char*) * argc);
     sx_assert(argv);
 
-    cline = sx_skip_whitespace(text);
+    cline = sx_skip_whitespace(cmd_and_args);
     int arg_idx = 0;
     while (cline && *cline) {
         int char_idx = 0;
-        for (char c = *cline; !sx_isspace(c) && *cline && char_idx < (int)sizeof(arg);
-             c = *(++cline), ++char_idx) {
-            arg[char_idx] = c;
+        for (char c = *cline; !sx_isspace(c) && *cline && char_idx < (int)sizeof(arg); c = *(++cline), ++char_idx) {
+            if (*cline == '\"') {
+                sx_str_block block = sx_findblock(cline, '\"', '\"');
+                if (block.end) {
+                    cline = block.end + 1;
+                    char_idx = (int)(uintptr_t)(block.end - block.start + 1);
+                    sx_memcpy(arg, block.start, char_idx);
+                    break;
+                }
+            } else {
+                arg[char_idx] = c;
+            }
         }
         arg[char_idx] = '\0';
         cline = sx_skip_whitespace(cline);
@@ -793,237 +980,172 @@ static void rizz__rmt_input_handler(const char* text, void* context)
         if (sx_strequal(g_core.console_cmds[i].name, argv[0])) {
             cmd_found = true;
             int r;
-            if ((r = g_core.console_cmds[i].callback(argc, argv)) < 0) {
-                char err_msg[256];
-                sx_snprintf(err_msg, sizeof(err_msg), "command '%s' failed with error: %d", argv[0],
-                            r);
-                rmt_LogText(err_msg);
+            if ((r = g_core.console_cmds[i].callback(argc, argv, g_core.console_cmds[i].user)) <
+                0) {
+                rizz__log_warn("command '%s' failed with error code %d", argv[0], r);
             }
             break;
         }
     }
 
     if (!cmd_found) {
-        char msg[256];
-        sx_snprintf(msg, sizeof(msg), "command '%s' not found", argv[0]);
-        rmt_LogText(msg);
+        rizz__log_warn("command '%s' not found", argv[0]);
     }
+
+    for (int i = 0; i < argc; i++) {
+        sx_free(alloc, argv[i]);
+    }
+    sx_free(alloc, argv);
+
 }
 
-static void rizz__core_register_console_command(const char* cmd, rizz_core_cmd_cb* callback)
+static void* rizz__tmp_alloc_debug_cb(void* ptr, size_t size, uint32_t align, const char* file,
+                                      const char* func, uint32_t line, void* user_data)
 {
-    sx_assert(cmd);
-    sx_assert(cmd[0]);
-    sx_assert(callback);
+    rizz__core_tmpalloc_debug_inst* inst = user_data;
 
-    rizz__core_cmd c;
-    sx_strcpy(c.name, sizeof(c.name), cmd);
-    c.callback = callback;
-    sx_array_push(rizz__alloc(RIZZ_MEMID_CORE), g_core.console_cmds, c);
-}
-
-static inline void rizz__atomic_max(sx_atomic_size* _max, intptr_t val)
-{
-    intptr_t cur_max = *_max;
-    while (cur_max < val && sx_atomic_cas_size(_max, val, cur_max) != cur_max) {
-        cur_max = *_max;
+    // no free function
+    if (!size) {
+        return NULL;
     }
+
+    align = align < SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT ? SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT : align;
+    size_t aligned_size = sx_align_mask(size, align - 1);
+    rizz__core_tmpalloc_debug* owner = inst->owner;
+
+    if ((owner->offset + aligned_size) > owner->max_size) {
+        sx_out_of_memory();
+        return NULL;
+    }
+
+    if (ptr) {
+        ptr = sx__realloc(g_core.heap_alloc, ptr, size, align, file, func, line);
+    } else {
+        ptr = sx__malloc(g_core.heap_alloc, size, align, file, func, line);
+    }
+    
+    if (ptr) {
+        rizz__core_tmpalloc_debug_item item = {
+            .ptr = ptr,
+            .line = line,
+            .size = aligned_size
+        };
+        if (file) {
+            sx_os_path_basename(item.file, sizeof(item.file), file);
+        }
+        owner->offset += aligned_size;
+        owner->frame_peak = sx_max(owner->frame_peak, owner->offset);
+        owner->peak = sx_max(owner->peak, owner->offset);
+        sx_array_push(the__core.alloc(RIZZ_MEMID_CORE), owner->items, item);
+    }
+
+    return ptr;
 }
 
 static void* rizz__tmp_alloc_cb(void* ptr, size_t size, uint32_t align, const char* file,
-                                  const char* func, uint32_t line, void* user_data)
+                                const char* func, uint32_t line, void* user_data)
 {
-    rizz__core_tmpalloc* alloc = user_data;
-    size_t raw_size = sx_stackalloc_real_alloc_size(size, align);
-    if ((raw_size + alloc->stack_alloc.offset) > alloc->stack_alloc.size) {
-        // maximum reached, extend it by allocating new pages
-        // size_t size_needed = raw_size + alloc->stack_alloc.offset - alloc->stack_alloc.size;
-        // int num_pages = (int)(size_needed + alloc->vmem.page_size - 1) / alloc->vmem.page_size;
-        int num_pages = (int)(raw_size + alloc->vmem.page_size - 1) / alloc->vmem.page_size;
-        void* page_ptr = sx_vmem_commit_pages(&alloc->vmem, alloc->vmem.num_pages, num_pages);
-        if (page_ptr == NULL) {
-            sx_out_of_memory();
-            return NULL;
-        }
-        alloc->stack_alloc.size = sx_vmem_commit_size(&alloc->vmem);
-        // align offset to nearest page
-        size_t new_offset = (uintptr_t)page_ptr - (uintptr_t)alloc->vmem.ptr;
-        sx_assert(new_offset % alloc->vmem.page_size == 0);
-        alloc->stack_alloc.offset = new_offset;
-    }
+    sx_unused(file);
+    sx_unused(line);
+    sx_unused(func);
 
-    return sx__realloc(&alloc->stack_alloc.alloc, ptr, size, align, file, func, line);
-}
+    rizz__core_tmpalloc_inst* inst = user_data;
 
-static void* rizz__proxy_alloc_cb(void* ptr, size_t size, uint32_t align, const char* file,
-                                  const char* func, uint32_t line, void* user_data)
-{
-    sx_unused(ptr);
-
-    const sx_alloc* heap_alloc = (const sx_alloc*)user_data;
-    if (size == 0) {
-        // free
-        if (ptr) {
-            uint8_t* aligned = (uint8_t*)ptr;
-            rizz__proxy_alloc_header* header = (rizz__proxy_alloc_header*)ptr - 1;
-            ptr = aligned - header->ptr_offset;
-
-            sx_atomic_fetch_add_size(&g_core.heap_size, -header->size);
-            sx_atomic_decr(&g_core.heap_count);
-
-            sx__free(heap_alloc, ptr, 0, file, func, line);
-        }
-
+    // we have no free function
+    if (!size) {
         return NULL;
-    } else if (ptr == NULL) {
-        // malloc
-        align = sx_max((int)align, SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT);
-
-        // do the alignment ourselves
-        intptr_t total = (intptr_t)size + sizeof(rizz__proxy_alloc_header) + align;
-        uint8_t* _ptr = sx__malloc(heap_alloc, total, 0, file, func, line);
-        if (!_ptr) {
-            sx_out_of_memory();
-            return NULL;
-        }
-
-        uint8_t* aligned = (uint8_t*)sx_align_ptr(_ptr, sizeof(rizz__proxy_alloc_header), align);
-        rizz__proxy_alloc_header* header = (rizz__proxy_alloc_header*)aligned - 1;
-        header->size = total;
-        header->ptr_offset = (uint32_t)(uintptr_t)(aligned - _ptr);
-        header->track_item_idx = -1;
-
-        sx_atomic_fetch_add_size(&g_core.heap_size, total);
-        rizz__atomic_max(&g_core.heap_max, g_core.heap_size);
-        sx_atomic_incr(&g_core.heap_count);
-
-        return aligned;
-    } else {
-        // realloc
-        uint8_t* aligned = (uint8_t*)ptr;
-        rizz__proxy_alloc_header* header = (rizz__proxy_alloc_header*)ptr - 1;
-        uint32_t offset = header->ptr_offset;
-        intptr_t prev_size = header->size;
-        ptr = aligned - offset;
-        sx_atomic_fetch_add_size(&g_core.heap_size, -header->size);
-
-        align = sx_max((int)align, SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT);
-        intptr_t total = (intptr_t)size + sizeof(rizz__proxy_alloc_header) + align;
-        ptr = sx__realloc(heap_alloc, ptr, total, 0, file, func, line);
-        if (!ptr) {
-            sx_out_of_memory();
-            return NULL;
-        }
-        uint8_t* new_aligned = (uint8_t*)sx_align_ptr(ptr, sizeof(rizz__proxy_alloc_header), align);
-        if (new_aligned == aligned) {
-            header->size = total;
-            return aligned;
-        }
-
-        aligned = (uint8_t*)ptr + offset;
-        sx_memmove(new_aligned, aligned, size);
-        header = (rizz__proxy_alloc_header*)new_aligned - 1;
-        header->size = total;
-        header->ptr_offset = (uint32_t)(uintptr_t)(new_aligned - (uint8_t*)ptr);
-
-        intptr_t size_diff = total - prev_size;
-        sx_atomic_fetch_add_size(&g_core.heap_size, size_diff);
-        if (size_diff > 0)
-            rizz__atomic_max(&g_core.heap_max, g_core.heap_size);
-        return new_aligned;
     }
-}
 
-// NOTE: this special tracker alloc, always assumes that the redirecting allocator is
-// proxy-allocator
-//       Thus is assumes that all our pointers have rizz__proxy_alloc_header
-// TODO: There is a catch and a possible bug:
-//       malloc and realloc can conflict in multi-threaded environment, where it is called on the
-//       same pointer on different threads
-static void* rizz__track_alloc_cb(void* ptr, size_t size, uint32_t align, const char* file,
-                                  const char* func, uint32_t line, void* user_data)
-{
+    align = align < SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT ? SX_CONFIG_ALLOCATOR_NATURAL_ALIGNMENT : align;
+    size_t aligned_size = sx_align_mask(size, align - 1);
 
-    rizz__track_alloc* talloc = user_data;
-    const sx_alloc* proxy_alloc = &g_core.heap_proxy_alloc;
+    // decide with side to allocate:
+    //  - correct stack-mode allocations start from the end of the buffer
+    //  - in case there is collapsing allocators (tmpalloc from lower stack level needs to allocate)
+    //    then start from the begining of the buffer
+    bool alloc_from_start = (inst->depth < inst->parent->stack_depth);
+    uint8_t* buff = (uint8_t*)inst->parent->vmem.ptr;
+    size_t buff_size = (size_t)inst->parent->vmem.page_size * (size_t)inst->parent->vmem.max_pages;
+    
+    if (!alloc_from_start) {
+        size_t end_offset = inst->end_offset + aligned_size;
+        if (end_offset % align != 0) {
+            sx_align_mask(end_offset, align - 1);
+        }
 
-    if (size == 0) {
-        // free
+        void* new_ptr = buff + buff_size - end_offset;
+        *((size_t*)new_ptr - 1) = size;
+        inst->end_offset = end_offset + sizeof(size_t);
+
+        if (inst->end_offset > buff_size || (buff_size - inst->end_offset) < inst->start_offset) {
+            sx_out_of_memory();
+            return NULL;
+        }
+
         if (ptr) {
-            const rizz__proxy_alloc_header* header = (rizz__proxy_alloc_header*)ptr - 1;
-            sx_lock(&talloc->_lk);
-            sx_assert(header->track_item_idx >= 0 &&
-                      header->track_item_idx < sx_array_count(talloc->items));
-            talloc->size -= header->size;
-            rizz_track_alloc_item* mem_item = &talloc->items[header->track_item_idx];
-            sx_assert(mem_item->ptr == ptr && "memory corruption");
-            mem_item->ptr = NULL;    // invalidate memory item pointer
+            size_t old_size = *((size_t*)ptr - 1);
+            sx_memmove(new_ptr, ptr, sx_min(old_size, size));
+        } 
 
-            if (header->track_item_idx != sx_array_count(talloc->items) - 1) {
-                void* last_ptr = sx_array_last(talloc->items).ptr;
-                sx_assert(last_ptr);
-                rizz__proxy_alloc_header* last_header = (rizz__proxy_alloc_header*)last_ptr - 1;
-                last_header->track_item_idx = header->track_item_idx;
-                sx_array_pop(talloc->items, header->track_item_idx);
-            } else {
-                sx_array_pop_last(talloc->items);
+        size_t total = inst->start_offset + inst->end_offset;
+        inst->parent->peak = sx_max(inst->parent->peak, total);
+        inst->parent->frame_peak = sx_max(inst->parent->frame_peak, total);
+
+        return new_ptr;
+    } else {
+        void* lastptr = buff + inst->start_lastptr_offset;
+        // get the end_offset from the current depth allocator instead of self
+        size_t end_offset = inst->parent->alloc_stack[inst->parent->stack_depth-1].end_offset;
+
+        // if we are realloc on the same pointer, just re-adjust the offset
+        if (ptr == lastptr) {
+            size_t lastsize = *((size_t*)ptr - 1);
+            lastsize = sx_align_mask(lastsize, align - 1);
+            inst->start_offset += (aligned_size > lastsize) ? (aligned_size - lastsize) : 0;
+            if (inst->start_offset > (buff_size - end_offset)) {
+                sx_out_of_memory();
+                return NULL;
             }
-            sx_unlock(&talloc->_lk);
-            sx__free(proxy_alloc, ptr, align, file, func, line);
+            *((size_t*)ptr - 1) = size;
+
+            size_t total = inst->start_offset + end_offset;
+            inst->parent->peak = sx_max(inst->parent->peak, total);
+            inst->parent->frame_peak = sx_max(inst->parent->frame_peak, total);
+            return ptr;
+        } else {
+            size_t start_offset = inst->start_offset + sizeof(size_t);
+            if (start_offset % align != 0) {
+                sx_align_mask(start_offset, align - 1);
+            }
+
+            if ((start_offset + aligned_size) > (buff_size - end_offset)) {
+                sx_out_of_memory();
+                return NULL;
+            }
+
+            void* new_ptr = buff + start_offset;
+            *((size_t*)new_ptr - 1) = size;
+            inst->start_offset = start_offset + aligned_size;
+            inst->start_lastptr_offset = start_offset;
+
+            size_t total = inst->start_offset + end_offset;
+            inst->parent->peak = sx_max(inst->parent->peak, total);
+            inst->parent->frame_peak = sx_max(inst->parent->frame_peak, total);
+            return new_ptr;
         }
-
-        return NULL;
-    } else if (ptr == NULL) {
-        // malloc
-        ptr = sx__malloc(proxy_alloc, size, align, file, func, line);
-        sx_assert(ptr);
-        rizz__proxy_alloc_header* header = (rizz__proxy_alloc_header*)ptr - 1;
-        rizz_track_alloc_item mem_item = { .ptr = ptr, .line = line, .size = header->size };
-        if (file) {
-            sx_os_path_basename(mem_item.file, sizeof(mem_item.file), file);
-        }
-        if (func) {
-            sx_strcpy(mem_item.func, sizeof(mem_item.func), func);
-        }
-
-        sx_lock(&talloc->_lk);
-        talloc->size += header->size;
-        talloc->peak = sx_max(talloc->peak, talloc->size);
-        header->track_item_idx = sx_array_count(talloc->items);
-        sx_array_push(g_core.heap_alloc, talloc->items, mem_item);
-        sx_unlock(&talloc->_lk);
-
-        return ptr;
-    } else {
-        // realloc
-        const rizz__proxy_alloc_header* prev_header = (rizz__proxy_alloc_header*)ptr - 1;
-        int64_t prev_size = prev_header->size;
-
-        ptr = sx__realloc(proxy_alloc, ptr, size, align, file, func, line);
-        sx_assert(ptr);
-        const rizz__proxy_alloc_header* header = (rizz__proxy_alloc_header*)ptr - 1;
-
-        sx_lock(&talloc->_lk);
-        sx_assert(header->track_item_idx >= 0 &&
-                  header->track_item_idx < sx_array_count(talloc->items));
-        int64_t size_diff = header->size - prev_size;
-        talloc->size += size_diff;
-        if (size_diff > 0)
-            talloc->peak = sx_max(talloc->peak, talloc->size);
-        rizz_track_alloc_item* mem_item = &talloc->items[header->track_item_idx];
-        if (file) {
-            sx_os_path_basename(mem_item->file, sizeof(mem_item->file), file);
-        }
-        if (func) {
-            sx_strcpy(mem_item->func, sizeof(mem_item->func), func);
-        }
-        mem_item->ptr = ptr;
-        mem_item->line = line;
-        mem_item->size = header->size;
-        sx_unlock(&talloc->_lk);
-
-        return ptr;
     }
+}
+
+static int rizz__core_echo_command(int argc, char* argv[], void* user)
+{
+    sx_unused(user);
+    
+    if (argc > 1) {
+        rizz__log_debug(argv[1]);
+        return 0;
+    }
+
+    return -1;
 }
 
 bool rizz__core_init(const rizz_config* conf)
@@ -1032,26 +1154,28 @@ bool rizz__core_init(const rizz_config* conf)
                             ? sx_alloc_malloc_leak_detect()
                             : sx_alloc_malloc();
 
-#ifdef RIZZ_VERSION
-    rizz__parse_version(sx_stringize(RIZZ_VERSION), &g_core.ver.major, &g_core.ver.minor, 
-                        g_core.ver.git, sizeof(g_core.ver.git));
-#endif
+    #ifdef RIZZ_VERSION
+        rizz__parse_version(sx_stringize(RIZZ_VERSION), &g_core.ver.major, &g_core.ver.minor, 
+                            g_core.ver.git, sizeof(g_core.ver.git));
+    #endif
 
-    if (RIZZ_CONFIG_DEBUG_MEMORY) {
-        g_core.heap_proxy_alloc =
-            (sx_alloc){ .alloc_cb = rizz__proxy_alloc_cb, .user_data = (void*)g_core.heap_alloc };
-
+    #if RIZZ_CONFIG_DEBUG_MEMORY
+        rizz__mem_init(RIZZ_MEMOPTION_TRACE_CALLSTACK|RIZZ_MEMOPTION_MULTITHREAD);
         // initialize track allocators
         for (int i = 0; i < _RIZZ_MEMID_COUNT; i++) {
-            g_core.track_allocs[i] =
-                (rizz__track_alloc){ .alloc = { .alloc_cb = rizz__track_alloc_cb,
-                                                .user_data = (void*)&g_core.track_allocs[i] },
-                                     .mem_id = (rizz_mem_id)i,
-                                     .name = k__memid_names[i] };
+            g_core.track_allocs[i] = rizz__mem_create_allocator(
+                k__memid_names[i], 
+                RIZZ_MEMOPTION_INHERIT,
+                NULL,
+                g_core.heap_alloc);
+            if (!g_core.track_allocs[i]) {
+                rizz__log_error("creating track allocators failed");
+                return false;
+            }
         }
-    } else {
+    #else
         g_core.heap_proxy_alloc = *g_core.heap_alloc;
-    }
+    #endif
 
     const sx_alloc* alloc = rizz__alloc(RIZZ_MEMID_CORE);
     sx_strcpy(g_core.app_name, sizeof(g_core.app_name), conf->app_name);
@@ -1059,10 +1183,12 @@ bool rizz__core_init(const rizz_config* conf)
     g_core.flags = conf->core_flags;
     g_core.log_level = conf->log_level;
 
-    int num_worker_threads =
-        conf->job_num_threads >= 0 ? conf->job_num_threads : (sx_os_numcores() - 1);
-    num_worker_threads =
-        sx_max(1, num_worker_threads);              // we should have at least one worker thread
+    // string pool, used mainly for allocating permanent const char* pointers
+    g_core.strpool = sx_strpool_create(alloc, NULL);
+    sx_assert_alwaysf(g_core.strpool, "out of memory");
+
+    int num_worker_threads = conf->job_num_threads >= 0 ? conf->job_num_threads : (sx_os_numcores() - 1);
+    num_worker_threads = sx_max(1, num_worker_threads);   // we should have at least one worker thread
     g_core.num_threads = num_worker_threads + 1;    // include the main-thread
 
     // log queues per thread
@@ -1072,8 +1198,7 @@ bool rizz__core_init(const rizz_config* conf)
         return false;
     }
     for (int i = 0; i < g_core.num_threads; i++) {
-        g_core.log_pipes[i].queue =
-            sx_queue_spsc_create(alloc, sizeof(rizz__log_entry_internal), 32);
+        g_core.log_pipes[i].queue = sx_queue_spsc_create(alloc, sizeof(rizz__log_entry_internal), 32);
         g_core.log_pipes[i].strpool = sx_strpool_create(alloc, NULL);
         if (!g_core.log_pipes[i].queue || !g_core.log_pipes[i].strpool) {
             sx_out_of_memory();
@@ -1081,10 +1206,10 @@ bool rizz__core_init(const rizz_config* conf)
         }
     }
 
-#if SX_PLATFORM_ANDROID || SX_PLATFORM_IOS
-    // TEMP: remove log to file flag on mobile
-    g_core.flags &= ~RIZZ_CORE_FLAG_LOG_TO_FILE;
-#endif
+    #if SX_PLATFORM_ANDROID || SX_PLATFORM_IOS
+        // TEMP: remove log to file flag on mobile
+        g_core.flags &= ~RIZZ_CORE_FLAG_LOG_TO_FILE;
+    #endif
 
     if (g_core.flags & RIZZ_CORE_FLAG_LOG_TO_FILE) {
         sx_strcpy(g_core.logfile, sizeof(g_core.logfile), conf->app_name);
@@ -1101,9 +1226,6 @@ bool rizz__core_init(const rizz_config* conf)
     rizz__log_info("version: %d.%d-%s", g_core.ver.major, g_core.ver.minor, g_core.ver.git);
 
     sx_tm_init();
-    sx_rng_seed(&g_core.rng, sizeof(time_t) == sizeof(uint64_t)
-                                 ? sx_hash_u64_to_u32((uint64_t)time(NULL))
-                                 : (uint32_t)time(NULL));
 
     // disk-io (virtual file system)
     if (!rizz__vfs_init(rizz__alloc(RIZZ_MEMID_VFS))) {
@@ -1112,32 +1234,43 @@ bool rizz__core_init(const rizz_config* conf)
     }
     rizz__log_info("(init) vfs");
 
-    // Temp allocators
-    {
-        g_core.tmp_allocs = sx_malloc(alloc, sizeof(rizz__core_tmpalloc) * g_core.num_threads);
-        if (!g_core.tmp_allocs) {
-            sx_out_of_memory();
-            return false;
-        }
+    { // Temp allocators
         size_t page_sz = sx_os_pagesz();
-        size_t tmp_size = sx_align_mask(
-            conf->tmp_mem_max > 0 ? conf->tmp_mem_max * 1024 : DEFAULT_TMP_SIZE, page_sz - 1);
-        int num_tmp_pages =  sx_vmem_get_needed_pages(tmp_size);
+        size_t tmp_size = sx_align_mask(conf->tmp_mem_max > 0 ? conf->tmp_mem_max * 1024 : DEFAULT_TMP_SIZE, page_sz - 1);
 
-        for (int i = 0; i < g_core.num_threads; i++) {
-            rizz__core_tmpalloc* t = &g_core.tmp_allocs[i];
-            t->alloc = (sx_alloc) {
-                .alloc_cb = rizz__tmp_alloc_cb,
-                .user_data = t
-            };
-            if (!sx_vmem_init(&t->vmem, 0, num_tmp_pages)) {
+        if (!(g_core.flags & RIZZ_CORE_FLAG_DEBUG_TEMP_ALLOCATOR)) {
+            g_core.tmp_allocs = sx_calloc(alloc, sizeof(rizz__core_tmpalloc) * g_core.num_threads);
+            if (!g_core.tmp_allocs) {
                 sx_out_of_memory();
                 return false;
             }
-            sx_vmem_commit_page(&t->vmem, 0);
-            sx_stackalloc_init(&t->stack_alloc, t->vmem.ptr, page_sz);
-            t->offset_stack = NULL;
+
+            int num_tmp_pages =  sx_vmem_get_needed_pages(tmp_size);
+
+            for (int i = 0; i < g_core.num_threads; i++) {
+                rizz__core_tmpalloc* t = &g_core.tmp_allocs[i];
+                if (!sx_vmem_init(&t->vmem, 0, num_tmp_pages)) {
+                    sx_out_of_memory();
+                    return false;
+                }
+                sx_vmem_commit_pages(&t->vmem, 0, num_tmp_pages);
+            }
         }
+        else {
+            g_core.tmp_debug_allocs = sx_calloc(alloc, sizeof(rizz__core_tmpalloc_debug)*g_core.num_threads);
+            if (!g_core.tmp_debug_allocs) {
+                sx_out_of_memory();
+                return false;
+            }
+
+            for (int i = 0; i < g_core.num_threads; i++) {
+                rizz__core_tmpalloc_debug* t = &g_core.tmp_debug_allocs[i];
+                t->max_size = tmp_size;
+            }
+
+            rizz__log_info("(init) using debug temp allocators");
+        }
+
         rizz__log_info("(init) temp memory: %dx%d kb", g_core.num_threads, tmp_size / 1024);
     }
 
@@ -1156,12 +1289,6 @@ bool rizz__core_init(const rizz_config* conf)
                    sx_job_num_worker_threads(g_core.jobs), conf->job_max_fibers,
                    conf->job_stack_size);
 
-    // reflection
-    if (!rizz__refl_init(rizz__alloc(RIZZ_MEMID_REFLECT), 0)) {
-        rizz__log_error("initializing reflection failed");
-        return false;
-    }
-
     // asset system
 #if SX_PLATFORM_ANDROID || SX_PLATFORM_IOS
     const char* asset_dbpath = "/assets/asset-db.json";
@@ -1175,32 +1302,48 @@ bool rizz__core_init(const rizz_config* conf)
     rizz__log_info("(init) asset system: hot-loading=%d", RIZZ_CONFIG_HOT_LOADING);
 
     // profiler
-    rmtSettings* rmt_config = rmt_Settings();
-    if (rmt_config) {
-        rmt_config->malloc = rmt__malloc;
-        rmt_config->free = rmt__free;
-        rmt_config->realloc = rmt__realloc;
-        rmt_config->mm_context = (void*)rizz__alloc(RIZZ_MEMID_TOOLSET);
-        rmt_config->port = conf->profiler_listen_port;
-        rmt_config->msSleepBetweenServerUpdates = conf->profiler_update_interval_ms;
-        rmt_config->reuse_open_port = true;
-        rmt_config->input_handler = rizz__rmt_input_handler;
-    }
-    rmtError rmt_err;
-    if ((rmt_err = rmt_CreateGlobalInstance(&g_core.rmt)) != RMT_ERROR_NONE) {
-        rizz__log_warn("initializing profiler failed: %d", rmt_err);
-    }
+    #if RMT_ENABLED 
+        sx_mutex_init(&g_core.rmt_mtx);
+        g_core.rmt_alloc_pool = sx_pool_create(rizz__alloc(RIZZ_MEMID_TOOLSET), RMT_SMALL_MEMORY_SIZE, 1000);
+        if (g_core.rmt_alloc_pool == NULL) {
+            sx_memory_fail();
+            return false;
+        }
+        rmtSettings* rmt_config = rmt_Settings();
+        if (rmt_config) {
+            // FIXME: removed due to various regression bugs
+            //        at some point, we need to get back to the newer versions and recheck this
+            // rmt_config->enableThreadSampler = false; // FIXME: Due to assert failure we had to disable this feature: 
+                                                        // https://github.com/Celtoys/Remotery/issues/178#issue-894595107
+            rmt_config->malloc = rmt__malloc;
+            rmt_config->free = rmt__free;
+            rmt_config->realloc = rmt__realloc;
+            rmt_config->mm_context = (void*)rizz__alloc(RIZZ_MEMID_TOOLSET);
+            rmt_config->port = (uint16_t)conf->profiler_listen_port;
+            rmt_config->msSleepBetweenServerUpdates = conf->profiler_update_interval_ms;
+            rmt_config->reuse_open_port = true;
+            rmt_config->input_handler = rizz__rmt_input_handler;
+            rmt_config->input_handler_context = (void*)rizz__alloc(RIZZ_MEMID_TOOLSET);
+            rmt_config->view_handler = rizz__rmt_view_handler;
+        }
+        rmtError rmt_err;
+        if ((rmt_err = rmt_CreateGlobalInstance(&g_core.rmt)) != RMT_ERROR_NONE) {
+            rizz__log_warn("initializing profiler failed: %d", rmt_err);
+        }
 
-    rmt_SetCurrentThreadName("Main");
-    if (RMT_ENABLED && g_core.rmt) {
-        const char* profile_subsets;
-        if (conf->core_flags & RIZZ_CORE_FLAG_PROFILE_GPU)
-            profile_subsets = "cpu/gpu";
-        else
-            profile_subsets = "cpu";
-        rizz__log_info("(init) profiler (%s): port=%d", profile_subsets,
-                       conf->profiler_listen_port);
-    }
+        rmt_SetCurrentThreadName("Main");
+        if (g_core.rmt) {
+            const char* profile_subsets;
+            if (conf->core_flags & RIZZ_CORE_FLAG_PROFILE_GPU)
+                profile_subsets = "cpu/gpu";
+            else
+                profile_subsets = "cpu";
+            rizz__log_info("(init) profiler (%s): port=%d", profile_subsets, conf->profiler_listen_port);
+
+            g_core.rmt_command_queue = sx_queue_spsc_create(alloc, sizeof(char*), 16);
+            sx_assert_always(g_core.rmt_command_queue);
+        }
+    #endif // RMT_ENABLED
 
     // graphics
     sg_desc gfx_desc;
@@ -1230,13 +1373,12 @@ bool rizz__core_init(const rizz_config* conf)
 
     // coroutines
     g_core.coro =
-        sx_coro_create_context(alloc, conf->coro_max_fibers, conf->coro_stack_size * 1024);
+        sx_coro_create_context(alloc, conf->coro_num_init_fibers, conf->coro_stack_size * 1024);
     if (!g_core.coro) {
         rizz__log_error("initializing coroutines failed");
         return false;
     }
-    rizz__log_info("(init) coroutines: max_fibers=%d, stack_size=%dkb", conf->coro_max_fibers,
-                   conf->coro_stack_size);
+    rizz__log_info("(init) coroutines: stack_size=%dkb", conf->coro_stack_size);
 
     // http client
     if (!rizz__http_init(alloc)) {
@@ -1259,22 +1401,21 @@ bool rizz__core_init(const rizz_config* conf)
 
     rizz__json_init();
 
+    the__core.register_console_command("echo", rizz__core_echo_command, NULL, NULL);
+
     return true;
 }
 
 #ifdef _DEBUG
-static void rizz__core_dump_leak(const char* formatted_msg, const char* file, const char* func,
+static void rizz__core_dump_leak(const char* formatted_msg, 
+                                 const char* file, const char* func,
                                  int line, size_t size, void* ptr)
 {
-    sx_unused(file);
-    sx_unused(size);
-    sx_unused(ptr);
-    sx_unused(line);
-    sx_unused(func);
-
-    rizz__log_debug(formatted_msg);
+    sx_unused(formatted_msg);
+    the__core.print_debug(0, file, line, "MEMORY LEAK: @%s, %$ubytes (ptr=0x%p)", func, size, ptr);
 }
 #endif
+
 
 void rizz__core_release()
 {
@@ -1294,7 +1435,7 @@ void rizz__core_release()
     }
 
     if (g_core.coro) {
-        sx_coro_destroy_context(g_core.coro, alloc);
+        sx_coro_destroy_context(g_core.coro);
     }
 
     if (g_core.flags & RIZZ_CORE_FLAG_DUMP_UNUSED_ASSETS) {
@@ -1306,19 +1447,31 @@ void rizz__core_release()
     rizz__asset_release();
     rizz__gfx_release();
     rizz__vfs_release();
-    rizz__refl_release();
 
-    if (g_core.rmt) {
-        rmt_DestroyGlobalInstance(g_core.rmt);
-    }
+    #if RMT_ENABLED
+        sx_queue_spsc_destroy(g_core.rmt_command_queue, alloc);
+        if (g_core.rmt) {
+            rmt_DestroyGlobalInstance(g_core.rmt);
+        }
+        sx_pool_destroy(g_core.rmt_alloc_pool, rizz__alloc(RIZZ_MEMID_TOOLSET));
+        sx_mutex_exit(&g_core.rmt_mtx);
+    #endif // RMT_ENABLED
     sx_array_free(alloc, g_core.console_cmds);
 
     if (g_core.tmp_allocs) {
         for (int i = 0; i < g_core.num_threads; i++) {
             sx_vmem_release(&g_core.tmp_allocs[i].vmem);
-            sx_array_free(alloc, g_core.tmp_allocs[i].offset_stack);
+            sx_array_free(alloc, g_core.tmp_allocs[i].alloc_stack);
         }
         sx_free(alloc, g_core.tmp_allocs);
+    }
+
+    if (g_core.tmp_debug_allocs) {
+        for (int i = 0; i < g_core.num_threads; i++) {
+            sx_array_free(alloc, g_core.tmp_debug_allocs[i].items);
+            sx_array_free(alloc, g_core.tmp_debug_allocs[i].alloc_stack);
+        }
+        sx_free(alloc, g_core.tmp_debug_allocs);
     }
 
     // release log backends and queues
@@ -1334,150 +1487,270 @@ void rizz__core_release()
     sx_array_free(alloc, g_core.log_backends);
     g_core.num_log_backends = 0;
 
-    if (RIZZ_CONFIG_DEBUG_MEMORY) {
-        for (int i = 0; i < _RIZZ_MEMID_COUNT; i++) {
-            sx_array_free(g_core.heap_alloc, g_core.track_allocs[i].items);
-        }
-    }
+    sx_strpool_destroy(g_core.strpool, alloc);
 
+    #if RIZZ_CONFIG_DEBUG_MEMORY
+        for (int i = 0; i < _RIZZ_MEMID_COUNT; i++) {
+            rizz__mem_destroy_allocator(g_core.track_allocs[i]);
+        }
+        rizz__mem_release();
+    #endif
+    
     for (int i = 0; i < sx_array_count(g_core.tls_vars); i++) {
         if (g_core.tls_vars[i].tls) {
             sx_tls_destroy(g_core.tls_vars[i].tls);
         }
     }
 
-    sx_array_free(&g_core.heap_proxy_alloc, g_core.tls_vars);
-
+    sx_array_free(g_core.heap_alloc, g_core.tls_vars);
     rizz__log_info("shutdown");
 
 #ifdef _DEBUG
     sx_dump_leaks(rizz__core_dump_leak);
 #endif
-
     sx_memset(&g_core, 0x0, sizeof(g_core));
 }
 
 void rizz__core_frame()
 {
-    rizz__profile_begin(FRAME, 0);
-    {
-        static uint32_t gpu_frame_hash = 0;
-        the__gfx.imm.begin_profile_sample("FRAME", &gpu_frame_hash);
+    if (g_core.paused) {
+        return;
     }
 
-    // Measure timing and fps
-    g_core.delta_tick = sx_tm_laptime(&g_core.last_tick);
-    g_core.elapsed_tick += g_core.delta_tick;
-
-    uint64_t delta_tick = g_core.delta_tick;
-    float dt = (float)sx_tm_sec(delta_tick);
-
-    if (delta_tick > 0) {
-        double afps = g_core.fps_mean;
-        double fps = 1.0 / dt;
-
-        afps += (fps - afps) / (double)g_core.frame_idx;
-        g_core.fps_mean = (float)afps;
-        g_core.fps_frame = (float)fps;
-    }
-
-    // reset temp allocators
-    size_t page_sz = sx_os_pagesz();
-    for (int i = 0, c = g_core.num_threads; i < c; i++) {
-        rizz__core_tmpalloc* t = &g_core.tmp_allocs[i];
-        sx_vmem_free_pages(&t->vmem, 1, t->vmem.num_pages - 1);
-        sx_stackalloc_reset(&t->stack_alloc);
-        t->stack_alloc.size = page_sz;
-    }
-
-    rizz__gfx_trace_reset_frame_stats(RIZZ_GFX_TRACE_COMMON);
-
-    // update internal sub-systems
-    rizz__http_update();
-    rizz__vfs_async_update();
-    rizz__asset_update();
-    rizz__gfx_update();
-
-    rizz__profile_begin(Coroutines, 0);
-    sx_coro_update(g_core.coro, dt);
-    rizz__profile_end(Coroutines);
-
-    // update plugins and application
-    rizz__plugin_update(dt);
-
-    // execute remaining commands from the 'staged' API
-    rizz__profile_begin(Execute_command_buffers, 0);
-    rizz__gfx_execute_command_buffers_final();
-    rizz__profile_end(Execute_command_buffers);
-
-    // flush queued logs
-    rizz__profile_begin(Log_update, 0);
-    rizz__log_update();
-    rizz__profile_end(Log_update);
-
-    // draw imgui stuff
-    rizz_api_imgui* the_imgui = the__plugin.get_api_byname("imgui", 0);
-    if (the_imgui) {
-        rizz__profile_begin(ImGui_draw, 0);
-        rizz_api_imgui_extra* the_imguix = the__plugin.get_api_byname("imgui_extra", 0);
-        if (g_core.show_memory.show) {
-            rizz_mem_info minfo;
-            the__core.get_mem_info(&minfo);
-            the_imguix->memory_debugger(&minfo, g_core.show_memory.p_open);
-            g_core.show_memory.show = false;
-        }
-        if (g_core.show_graphics.show) {
-            the_imguix->graphics_debugger(the__gfx.trace_info(), g_core.show_graphics.p_open);
-            g_core.show_graphics.show = false;
-        }
-        if (g_core.show_log.show) {
-            the_imguix->show_log(g_core.show_log.p_open);
-            g_core.show_log.show = false;
+    rizz__profile(Frame) {
+        {
+            static uint32_t gpu_frame_hash = 0;
+            the__gfx.imm.begin_profile_sample("FRAME", &gpu_frame_hash);
         }
 
-        rizz__gfx_trace_reset_frame_stats(RIZZ_GFX_TRACE_IMGUI);
-        the_imgui->Render();
-        rizz__profile_end(ImGui_draw);
+        // Measure timing and fps
+        g_core.delta_tick = sx_tm_laptime(&g_core.last_tick);
+        g_core.elapsed_tick += g_core.delta_tick;
+
+        uint64_t delta_tick = g_core.delta_tick;
+        float dt = (float)sx_tm_sec(delta_tick);
+
+        if (delta_tick > 0) {
+            double afps = g_core.fps_mean;
+            double fps = 1.0 / dt;
+
+            afps += (fps - afps) / (double)g_core.frame_idx;
+            g_core.fps_mean = (float)afps;
+            g_core.fps_frame = (float)fps;
+        }
+
+        // reset temp allocators
+        if (g_core.tmp_allocs) {
+            for (int i = 0, c = g_core.num_threads; i < c; i++) {
+                rizz__core_tmpalloc* t = &g_core.tmp_allocs[i];
+            
+                if (t->stack_depth > 0) {
+                    t->wait_time += dt;
+                    if (t->wait_time > MAX_TEMP_ALLOC_WAIT_TIME) {
+                        the__core.print_error(0,
+                                              t->alloc_stack[t->stack_depth-1].file, 
+                                              t->alloc_stack[t->stack_depth-1].line,
+                                              "tmp_alloc_push doesn't seem to have the pop call (Thread: %d)", i);
+                        sx_assertf(0, "not all tmp_allocs are popped.");
+                    }
+                } else {
+                    sx_array_clear(t->alloc_stack);
+                    t->stack_depth = 0;
+                    t->frame_peak = 0;
+                    t->wait_time = 0;
+                }
+            }
+        } else if (g_core.tmp_debug_allocs) {
+            for (int i = 0, c = g_core.num_threads; i < c; i++) {
+                rizz__core_tmpalloc_debug* t = &g_core.tmp_debug_allocs[i];
+                if (t->stack_depth > 0) {
+                    t->wait_time += dt;
+                    if (t->wait_time > MAX_TEMP_ALLOC_WAIT_TIME) {
+                        the__core.print_error(0, 
+                                              t->alloc_stack[t->stack_depth - 1].file,
+                                              t->alloc_stack[t->stack_depth - 1].line,
+                                              "tmp_alloc_push doesn't seem to have the pop call");
+                        sx_assertf(0, "not all tmp_allocs are popped.");
+                    }
+                } else {
+                    sx_assertf(sx_array_count(t->items) == 0, "not all tmp_alloc items are freed");
+                    sx_array_clear(t->items);
+                    sx_array_clear(t->alloc_stack);
+                    t->offset = 0;
+                    t->stack_depth = 0;
+                    t->frame_peak = 0;
+                    t->wait_time = 0;
+                }
+            }
+        }
+
+        rizz__gfx_trace_reset_frame_stats(RIZZ_GFX_TRACE_COMMON);
+
+        // update internal sub-systems
+        rizz__http_update();
+        rizz__vfs_async_update();
+        rizz__asset_update();
+        rizz__gfx_update();
+
+        rizz__profile(Coroutines) {
+            sx_coro_update(g_core.coro, dt);
+        }
+
+        // update plugins and application
+        rizz__plugin_update(dt);
+
+        // execute remaining commands from the 'staged' API
+        rizz__profile(Execute_command_buffers) {
+            rizz__gfx_execute_command_buffers_final();
+        }
+
+        // flush queued logs
+        rizz__profile(Log_update) {
+            rizz__log_update();
+        }
+
+        // consume console commands from remotery
+        if (g_core.rmt_command_queue) {
+            char* cmd;
+            while (sx_queue_spsc_consume(g_core.rmt_command_queue, (void*)&cmd)) {
+                rizz__execute_console_command(cmd);
+                sx_free(the__core.alloc(RIZZ_MEMID_TOOLSET), cmd);
+            }
+        }
+
+        // draw imgui stuff
+        rizz_api_imgui* the_imgui = the__plugin.get_api_byname("imgui", 0);
+        if (the_imgui) {
+            rizz__profile(ImGui_draw) {
+                rizz_api_imgui_extra* the_imguix = the__plugin.get_api_byname("imgui_extra", 0);
+                if (g_core.show_memory.show) {
+                    rizz__mem_show_debugger(g_core.show_memory.p_open);
+                    g_core.show_memory.show = false;
+                }
+                if (g_core.show_graphics.show) {
+                    the_imguix->graphics_debugger(the__gfx.trace_info(), g_core.show_graphics.p_open);
+                    g_core.show_graphics.show = false;
+                }
+                if (g_core.show_log.show) {
+                    the_imguix->show_log(g_core.show_log.p_open);
+                    g_core.show_log.show = false;
+                }
+
+                rizz__gfx_trace_reset_frame_stats(RIZZ_GFX_TRACE_IMGUI);
+                the_imgui->Render();
+            }
+        }
+
+        rizz__gfx_commit_gpu();
+        ++g_core.frame_idx;
+
+        the__gfx.imm.end_profile_sample();
+    } // profile
+}
+
+static const sx_alloc* rizz__core_tmp_alloc_push_trace(const char* file, uint32_t line)
+{
+    if (g_core.tmp_allocs) {
+        rizz__core_tmpalloc* talloc = &g_core.tmp_allocs[sx_job_thread_index(g_core.jobs)];
+
+        int count = sx_array_count(talloc->alloc_stack);
+        if (count == 0) {
+            rizz__core_tmpalloc_inst inst = {
+                .alloc = {
+                    .alloc_cb = rizz__tmp_alloc_cb,
+                },
+                .depth = count + 1,
+                .parent = talloc,
+                .file = file,
+                .line = line
+            };
+
+            sx_array_push(rizz__alloc(RIZZ_MEMID_CORE), talloc->alloc_stack, inst);
+        } else {
+            rizz__core_tmpalloc_inst inst = sx_array_last(talloc->alloc_stack);
+            ++inst.depth;
+            inst.file = file;
+            inst.line = line;
+            sx_array_push(rizz__alloc(RIZZ_MEMID_CORE), talloc->alloc_stack, inst);
+        }
+
+        sx_atomic_incr(&talloc->stack_depth);
+        rizz__core_tmpalloc_inst* _inst = &talloc->alloc_stack[count];
+        _inst->alloc.user_data = _inst;
+        return &_inst->alloc;
+    } 
+    else {
+        sx_assert(g_core.tmp_debug_allocs);
+        rizz__core_tmpalloc_debug* talloc = &g_core.tmp_debug_allocs[sx_job_thread_index(g_core.jobs)];
+
+        int count = sx_array_count(talloc->alloc_stack);
+        int item_idx = sx_array_count(talloc->items);
+        if (count == 0) {
+            rizz__core_tmpalloc_debug_inst inst = {
+                .alloc = {
+                    .alloc_cb = rizz__tmp_alloc_debug_cb
+                },
+                .owner = talloc,
+                .item_idx = item_idx,
+                .file = file,
+                .line = line
+            };
+            sx_array_push(rizz__alloc(RIZZ_MEMID_CORE), talloc->alloc_stack, inst);
+        } else {
+            rizz__core_tmpalloc_debug_inst inst = sx_array_last(talloc->alloc_stack);
+            inst.item_idx = item_idx;
+            inst.file = file;
+            inst.line = line;
+            sx_array_push(rizz__alloc(RIZZ_MEMID_CORE), talloc->alloc_stack, inst);
+        }
+
+        sx_atomic_incr(&talloc->stack_depth);
+        rizz__core_tmpalloc_debug_inst* _inst = &talloc->alloc_stack[count];
+        _inst->alloc.user_data = _inst;
+        return &_inst->alloc;
     }
-
-    rizz__gfx_commit_gpu();
-    ++g_core.frame_idx;
-
-    the__gfx.imm.end_profile_sample();
-    rizz__profile_end(FRAME);
 }
 
-static const sx_alloc* rizz__core_tmp_alloc_push()
+static const sx_alloc* rizz__core_tmp_alloc_push(void)
 {
-    rizz__core_tmpalloc* talloc = &g_core.tmp_allocs[sx_job_thread_index(g_core.jobs)];
-    sx_array_push(rizz__alloc(RIZZ_MEMID_CORE), talloc->offset_stack, talloc->stack_alloc.offset);
-    return &talloc->alloc;
+    return rizz__core_tmp_alloc_push_trace(NULL, 0);
 }
 
-static void rizz__core_tmp_alloc_pop()
+static void rizz__core_tmp_alloc_pop(void)
 {
-    rizz__core_tmpalloc* talloc = &g_core.tmp_allocs[sx_job_thread_index(g_core.jobs)];
-    if (sx_array_count(talloc->offset_stack)) {
-        size_t last_offset = sx_array_last(talloc->offset_stack);
-        sx_array_pop_last(talloc->offset_stack);
-        talloc->stack_alloc.offset = last_offset;
-        talloc->stack_alloc.last_ptr_offset = 0;
+    if (g_core.tmp_allocs) {
+        rizz__core_tmpalloc* talloc = &g_core.tmp_allocs[sx_job_thread_index(g_core.jobs)];
+        if (sx_array_count(talloc->alloc_stack)) {
+            sx_array_pop_last(talloc->alloc_stack);
+            sx_assert(talloc->stack_depth > 0);
+            sx_atomic_decr(&talloc->stack_depth);
+        } else {
+            sx_assertf(0, "no matching tmp_alloc_push for the call tmp_alloc_pop");
+        }
     }
-}
+    else {
+        sx_assert(g_core.tmp_debug_allocs);
+        rizz__core_tmpalloc_debug* talloc = &g_core.tmp_debug_allocs[sx_job_thread_index(g_core.jobs)];
+        if (sx_array_count(talloc->alloc_stack)) {
+            rizz__core_tmpalloc_debug_inst inst = sx_array_last(talloc->alloc_stack);
+            // free all allocated items from item_idx to the last one
+            int count = sx_array_count(talloc->items);
+            for (int i = inst.item_idx; i < count; i++) {
+                sx_free(g_core.heap_alloc, talloc->items[i].ptr);
+                talloc->offset -= talloc->items[i].size;
+            }
 
-static uint32_t rizz__rand()
-{
-    return sx_rng_gen(&g_core.rng);
-}
+            if (talloc->items) {
+                sx_array_pop_lastn(talloc->items, (count - inst.item_idx));
+            }
 
-static float rizz__randf()
-{
-    return sx_rng_gen_f(&g_core.rng);
-}
-
-static int rizz__rand_range(int _min, int _max)
-{
-    return sx_rng_gen_irange(&g_core.rng, _min, _max);
+            sx_array_pop_last(talloc->alloc_stack);
+            sx_assert(talloc->stack_depth > 0);
+            sx_atomic_decr(&talloc->stack_depth);
+        } else {
+            sx_assertf(0, "no matching tmp_alloc_push for the call tmp_alloc_pop");
+        }
+    }
 }
 
 static sx_job_t rizz__job_dispatch(int count,
@@ -1524,33 +1797,6 @@ static void rizz__end_profile_sample()
     rmt__end_cpu_sample();
 }
 
-static void rizz__get_mem_info(rizz_mem_info* info)
-{
-    for (int i = 0; i < _RIZZ_MEMID_COUNT; i++) {
-        rizz__track_alloc* t = &g_core.track_allocs[i];
-        info->trackers[i] = (rizz_trackalloc_info){ .name = t->name,
-                                                    .items = t->items,
-                                                    .num_items = sx_array_count(t->items),
-                                                    .mem_id = t->mem_id,
-                                                    .size = t->size,
-                                                    .peak = t->peak };
-    }
-
-    int num_temp_allocs = sx_min(g_core.num_threads, RIZZ_MAX_TEMP_ALLOCS);
-    for (int i = 0; i < g_core.num_threads && i < num_temp_allocs; i++) {
-        info->temp_allocs[i] =
-            (rizz_linalloc_info){ .offset = g_core.tmp_allocs[i].stack_alloc.offset,
-                                  .size = g_core.tmp_allocs[i].stack_alloc.size,
-                                  .peak = g_core.tmp_allocs[i].stack_alloc.peak };
-    }
-
-    info->num_trackers = RIZZ_CONFIG_DEBUG_MEMORY ? _RIZZ_MEMID_COUNT : 0;
-    info->num_temp_allocs = g_core.num_threads;
-    info->heap = g_core.heap_size;
-    info->heap_max = g_core.heap_max;
-    info->heap_count = g_core.heap_count;
-}
-
 static void rizz__core_coro_invoke(void (*coro_cb)(sx_fiber_transfer), void* user)
 {
     sx__coro_invoke(g_core.coro, coro_cb, user);
@@ -1584,8 +1830,7 @@ void rizz__core_fix_callback_ptrs(const void** ptrs, const void** new_ptrs, int 
 }
 
 static void rizz__core_tls_register(const char* name, void* user,
-                                    void* (*init_cb)(int thread_idx, uint32_t thread_id,
-                                                     void* user))
+                                    void* (*init_cb)(int thread_idx, uint32_t thread_id, void* user))
 {
     sx_assert(name);
     sx_assert(init_cb);
@@ -1597,7 +1842,7 @@ static void rizz__core_tls_register(const char* name, void* user,
 
     sx_assert(tvar.tls);
 
-    sx_array_push(&g_core.heap_proxy_alloc, g_core.tls_vars, tvar);
+    sx_array_push(g_core.heap_alloc, g_core.tls_vars, tvar);
 }
 
 static void* rizz__core_tls_var(const char* name)
@@ -1618,7 +1863,7 @@ static void* rizz__core_tls_var(const char* name)
         }
     }
 
-    sx_assert(0 && "tls_var not registered");
+    sx_assertf(0, "tls_var not registered");
     return NULL;
 }
 
@@ -1645,27 +1890,79 @@ static void rizz__show_log(bool* p_open)
     g_core.show_log.p_open = p_open;
 }
 
+static void rizz__pause(void)
+{
+    g_core.paused = true;
+}
+
+static void rizz__resume(void)
+{
+    g_core.last_tick = sx_tm_now();
+    g_core.paused = false;
+}
+
+static bool rizz__is_paused(void)
+{
+    return g_core.paused;
+}
+
+static const char* rizz__str_alloc(sx_str_t* phandle, const char* fmt, ...)
+{
+    sx_str_t handle;
+    rizz__with_temp_alloc(tmp_alloc) {
+        va_list args;
+        va_start(args, fmt);
+        char* str = sx_vsnprintf_alloc(tmp_alloc, fmt, args);
+        va_end(args);
+
+        handle = sx_strpool_add(g_core.strpool, str, sx_strlen(str));
+
+        sx_assert(handle);
+        if (phandle) {
+            *phandle = handle;
+        }
+    }
+
+    return sx_strpool_cstr(g_core.strpool, handle);
+}
+
+static void rizz__str_free(sx_str_t handle)
+{
+    sx_strpool_del(g_core.strpool, handle);
+}
+
+static const char* rizz__str_cstr(sx_str_t handle)
+{
+    sx_assert(handle);
+    return sx_strpool_cstr(g_core.strpool, handle);
+}
+
 // Core API
 rizz_api_core the__core = { .heap_alloc = rizz__heap_alloc,
                             .tmp_alloc_push = rizz__core_tmp_alloc_push,
                             .tmp_alloc_pop = rizz__core_tmp_alloc_pop,
+                            .tmp_alloc_push_trace = rizz__core_tmp_alloc_push_trace,
                             .tls_register = rizz__core_tls_register,
                             .tls_var = rizz__core_tls_var,
                             .alloc = rizz__alloc,
-                            .get_mem_info = rizz__get_mem_info,
+                            .trace_alloc_destroy = rizz__mem_destroy_allocator,
+                            .trace_alloc_clear = rizz__mem_allocator_clear_trace,
                             .version = rizz__version,
-                            .rand = rizz__rand,
-                            .randf = rizz__randf,
-                            .rand_range = rizz__rand_range,
                             .delta_tick = rizz__delta_tick,
                             .delta_time = rizz__delta_time,
                             .elapsed_tick = rizz__elapsed_tick,
                             .fps = rizz__fps,
                             .fps_mean = rizz__fps_mean,
                             .frame_index = rizz__frame_index,
+                            .pause = rizz__pause,
+                            .resume = rizz__resume,
+                            .is_paused = rizz__is_paused,
                             .set_cache_dir = rizz__set_cache_dir,
                             .cache_dir = rizz__cache_dir,
                             .data_dir = rizz__data_dir,
+                            .str_alloc = rizz__str_alloc,
+                            .str_free = rizz__str_free,
+                            .str_cstr = rizz__str_cstr,
                             .job_dispatch = rizz__job_dispatch,
                             .job_wait_and_del = rizz__job_wait_and_del,
                             .job_test_and_del = rizz__job_test_and_del,
@@ -1685,7 +1982,8 @@ rizz_api_core the__core = { .heap_alloc = rizz__heap_alloc,
                             .set_log_level = rizz__set_log_level,
                             .begin_profile_sample = rizz__begin_profile_sample,
                             .end_profile_sample = rizz__end_profile_sample,
-                            .register_console_command = rizz__core_register_console_command,
+                            .register_console_command = rizz__register_console_command,
+                            .execute_console_command = rizz__execute_console_command,
                             .show_graphics_debugger = rizz__show_graphics_debugger,
                             .show_memory_debugger = rizz__show_memory_debugger,
                             .show_log = rizz__show_log };

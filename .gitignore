@@ -24,8 +24,8 @@ __pycache__
 Thumbs.db
 .build*
 .clangd
+build.bat
 
-# Gradle
 .gradle
 /local.properties
 /.idea/workspace.xml
@@ -33,6 +33,8 @@ Thumbs.db
 /build
 /build-*
 /captures
+.clangd
+
 
 # assets
 assets/shaders/*
@@ -45,6 +47,7 @@ docs/warnings.txt
 imgui.ini
 install
 *.log
+.vscode/tasks.json
 .vscode/launch.json
 .vscode/c_cpp_properties.json
 shaders_h

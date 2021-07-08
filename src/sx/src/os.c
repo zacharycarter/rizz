@@ -13,9 +13,12 @@
 #    define VC_EXTRALEAN
 #    define WIN32_LEAN_AND_MEAN
 // clang-format off
+SX_PRAGMA_DIAGNOSTIC_PUSH()
+SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(5105)
 #    include <windows.h>
+SX_PRAGMA_DIAGNOSTIC_POP()
 #    include <direct.h>    // _getcwd
-#    include <Psapi.h>
+#    include <psapi.h>
 // clang-format on
 #elif SX_PLATFORM_POSIX
 #    include <dirent.h>    // S_IFREG
@@ -89,9 +92,7 @@ size_t sx_os_minstacksz(void)
 char sx_os_getch(void)
 {
 #if SX_PLATFORM_WINDOWS
-    return getchar();
-//#elif SX_PLATFORM_EMSCRIPTEN
-//	return 0;
+    return (char)(getchar() & 0xff);
 #elif SX_PLATFORM_POSIX
     struct termios old_term;
     struct termios new_term;
@@ -205,8 +206,7 @@ const char* sx_os_dlerr(void)
 
 int sx_os_chdir(const char* path)
 {
-#if SX_PLATFORM_PS4 || SX_PLATFORM_XBOXONE || SX_PLATFORM_WINRT || SX_PLATFORM_ANDROID || \
-    Sx_PLATFORM_IOS
+#if SX_PLATFORM_PS4 || SX_PLATFORM_XBOXONE || SX_PLATFORM_WINRT || SX_PLATFORM_ANDROID || SX_PLATFORM_IOS
     sx_unused(path);
     return -1;
 #elif SX_PLATFORM_WINDOWS
@@ -220,8 +220,6 @@ void sx_os_sleep(int ms)
 {
 #if SX_PLATFORM_WINDOWS
     Sleep(ms);
-#elif SX_PLATFORM_XBOXONE
-    sx_assert(0 && "Sleep not implemented");
 #else
     struct timespec req = { (time_t)ms / 1000, (long)((ms % 1000) * 1000000) };
     struct timespec rem = { 0, 0 };
@@ -276,7 +274,7 @@ sx_pinfo sx_os_exec(const char* const* argv)
     return pinfo;
 #else
     sx_unused(argv);
-    sx_assert(0 && "not implemented");
+    sx_assertf(0, "not implemented");
     return (sx_pinfo){ {0}, 0 };
 #endif    // SX_PLATFORM_
 }
@@ -306,7 +304,7 @@ bool sx_os_copy(const char* src, const char* dest)
     close(output);
     return result > -1;
 #else
-    sx_assert(0 && "not implemented");
+    sx_assert(0, "not implemented");
     return false;
 #endif
 }
@@ -360,7 +358,7 @@ char* sx_os_path_exepath(char* dst, int size)
 #else
     sx_unused(dst);
     sx_unused(size);
-    sx_assert(0 && "not implemented");
+    sx_assertf(0, "not implemented");
     return NULL;
 #endif
 }
@@ -499,7 +497,7 @@ char* sx_os_path_dirname(char* dst, int size, const char* path)
             sx_strncpy(dst, size, path, o);
         }
     } else if (dst != path) {
-        sx_strcpy(dst, size, path);
+        *dst = '\0';
     }
     return dst;
 }

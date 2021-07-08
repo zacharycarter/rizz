@@ -10,12 +10,16 @@
 //      sx_pool_del             Puts the data pointer back into pool
 //      sx_pool_valid_ptr           Checks if the object pointer is allocated from the pool
 //
-// This is a fixed capacity pool that is mainly needed in code, it's not recommended to assume
-// unlimited growable pools
-// But just in case we needed that kind of data, we can wrap this in another API and
-// create/link-list multiple pools
+// Note: memory will be zero'd on creation, so every object that you instanciate from the pool will 
+//       only be all-zero for the first instance, so you have to manage initialization for object by yourself
+//       see the example in the tip below
 //
 // TIP: You can use ctor caching pattern on pools, so some data of each object is initialized once
+//      typedef struct obj_t {
+//          bool is_init;       // will be set to zero at pool creation    
+//          uint32_t* buffer;   // whatever data
+//      } obj_t;
+//
 //      obj_t* obj = sx_pool_new(pool);
 //      if (!obj->is_init) {
 //          obj_init(obj);
@@ -26,34 +30,34 @@
 //
 #pragma once
 
-#include "sx.h"
+#include "allocator.h"
 
 typedef struct sx_alloc sx_alloc;
 
-typedef sx_align_decl(16, struct) sx__pool_page
+typedef struct sx__pool_page
 {
     void** ptrs;
     uint8_t* buff;
     struct sx__pool_page* next;
     int iter;
-}
-sx__pool_page;
+} sx__pool_page;
 
-typedef sx_align_decl(16, struct) sx_pool
+typedef struct sx_pool
 {
     int item_sz;
     int capacity;
     sx__pool_page* pages;
-}
-sx_pool;
+} sx_pool;
 
-static inline sx__pool_page* sx__pool_create_page(sx_pool* pool, const sx_alloc* alloc)
+SX_INLINE sx__pool_page* sx__pool_create_page(sx_pool* pool, const sx_alloc* alloc, const char* file, const char* func,
+                                              uint32_t line)
 {
     int capacity = pool->capacity;
     int item_sz = pool->item_sz;
 
-    uint8_t* buff = (uint8_t*)sx_aligned_malloc(
-        alloc, sizeof(sx__pool_page) + (item_sz + sizeof(void*)) * capacity, 16);
+    uint8_t* buff = (uint8_t*)sx__malloc(alloc, 
+                                         sizeof(sx__pool_page) + (item_sz + sizeof(void*)) * capacity, 
+                                         16, file, func, line);
     if (!buff) {
         sx_out_of_memory();
         return NULL;
@@ -69,17 +73,20 @@ static inline sx__pool_page* sx__pool_create_page(sx_pool* pool, const sx_alloc*
     for (int i = 0; i < capacity; i++) {
         page->ptrs[capacity - i - 1] = page->buff + (size_t)i * (size_t)item_sz;
     }
+    sx_memset(page->buff, 0x0, capacity * item_sz);
 
     return page;
 }
 
-static inline sx_pool* sx_pool_create(const sx_alloc* alloc, int item_sz, int capacity)
+SX_INLINE sx_pool* sx__pool_create(const sx_alloc* alloc, int item_sz, int capacity, 
+                                   const char* file, const char* func, uint32_t line)
 {
-    sx_assert(item_sz > 0 && "Item size should not be zero");
+    sx_assertf(item_sz > 0, "Item size should not be zero");
 
     capacity = sx_align_mask(capacity, 15);
-    uint8_t* buff = (uint8_t*)sx_aligned_malloc(
-        alloc, sizeof(sx_pool) + sizeof(sx__pool_page) + (item_sz + sizeof(void*)) * capacity, 16);
+    uint8_t* buff = (uint8_t*)sx__malloc(
+        alloc, sizeof(sx_pool) + sizeof(sx__pool_page) + (item_sz + sizeof(void*)) * capacity, 16, 
+        file, func, line);
     if (!buff) {
         sx_out_of_memory();
         return NULL;
@@ -101,28 +108,30 @@ static inline sx_pool* sx_pool_create(const sx_alloc* alloc, int item_sz, int ca
     for (int i = 0; i < capacity; i++) {
         page->ptrs[capacity - i - 1] = page->buff + (size_t)i * (size_t)item_sz;
     }
+    sx_memset(page->buff, 0x0, capacity * item_sz);
 
     return pool;
 }
 
-static inline void sx_pool_destroy(sx_pool* pool, const sx_alloc* alloc)
+SX_INLINE void sx_pool_destroy(sx_pool* pool, const sx_alloc* alloc)
 {
-    sx_assert(pool);
-    sx_assert(pool->pages);
+    if (pool) {
+        sx_assert(pool->pages);
 
-    sx__pool_page* page = pool->pages->next;
-    while (page) {
-        sx__pool_page* next = page->next;
-        sx_aligned_free(alloc, page, 16);
-        page = next;
+        sx__pool_page* page = pool->pages->next;
+        while (page) {
+            sx__pool_page* next = page->next;
+            sx_aligned_free(alloc, page, 16);
+            page = next;
+        }
+        pool->capacity = 0;
+        pool->pages->iter = 0;
+        pool->pages->next = NULL;
+        sx_aligned_free(alloc, pool, 16);
     }
-    pool->capacity = 0;
-    pool->pages->iter = 0;
-    pool->pages->next = NULL;
-    sx_aligned_free(alloc, pool, 16);
 }
 
-static inline void* sx_pool_new(sx_pool* pool)
+SX_INLINE void* sx_pool_new(sx_pool* pool)
 {
     sx__pool_page* page = pool->pages;
     while (page->iter == 0 && page->next)
@@ -131,18 +140,19 @@ static inline void* sx_pool_new(sx_pool* pool)
     if (page->iter > 0) {
         return page->ptrs[--page->iter];
     } else {
-        sx_assert(0 && "capacity is full");
+        sx_assertf(0, "capacity is full");
         return NULL;
     }
 }
 
-static inline bool sx_pool_grow(sx_pool* pool, const sx_alloc* alloc)
+SX_INLINE bool sx_pool_grow(sx_pool* pool, const sx_alloc* alloc, const char* file, const char* func, uint32_t line)
 {
-    sx__pool_page* page = sx__pool_create_page(pool, alloc);
+    sx__pool_page* page = sx__pool_create_page(pool, alloc, file, func, line);
     if (page) {
         sx__pool_page* last = pool->pages;
-        while (last->next)
+        while (last->next) {
             last = last->next;
+        }
         last->next = page;
         return true;
     } else {
@@ -150,7 +160,7 @@ static inline bool sx_pool_grow(sx_pool* pool, const sx_alloc* alloc)
     }
 }
 
-static inline bool sx_pool_full(const sx_pool* pool)
+SX_INLINE bool sx_pool_full(const sx_pool* pool)
 {
     sx__pool_page* page = pool->pages;
     while (page) {
@@ -162,7 +172,7 @@ static inline bool sx_pool_full(const sx_pool* pool)
 }
 
 // same as sx_pool_full, but check wether we can have N instances
-static inline bool sx_pool_fulln(const sx_pool* pool, int n)
+SX_INLINE bool sx_pool_fulln(const sx_pool* pool, int n)
 {
     sx__pool_page* page = pool->pages;
     while (page) {
@@ -173,7 +183,7 @@ static inline bool sx_pool_fulln(const sx_pool* pool, int n)
     return true;
 }
 
-static inline bool sx_pool_valid_ptr(const sx_pool* pool, void* ptr)
+SX_INLINE bool sx_pool_valid_ptr(const sx_pool* pool, void* ptr)
 {
     uintptr_t uptr = (uintptr_t)ptr;
     sx__pool_page* page = pool->pages;
@@ -190,7 +200,7 @@ static inline bool sx_pool_valid_ptr(const sx_pool* pool, void* ptr)
     return false;
 }
 
-static inline void sx_pool_del(sx_pool* pool, void* ptr)
+SX_INLINE void sx_pool_del(sx_pool* pool, void* ptr)
 {
     uintptr_t uptr = (uintptr_t)ptr;
     sx__pool_page* page = pool->pages;
@@ -200,9 +210,9 @@ static inline void sx_pool_del(sx_pool* pool, void* ptr)
     while (page) {
         if (uptr >= (uintptr_t)page->buff &&
             uptr < (uintptr_t)(page->buff + (size_t)capacity * (size_t)item_sz)) {
-            sx_assert((uintptr_t)((uint8_t*)ptr - page->buff) % item_sz == 0 &&
+            sx_assertf((uintptr_t)((uint8_t*)ptr - page->buff) % item_sz == 0,
                       "ptr is not aligned to items, probably invalid");
-            sx_assert(page->iter != capacity &&
+            sx_assertf(page->iter != capacity,
                       "cannot delete more objects, possible double delete");
 
             page->ptrs[page->iter++] = ptr;
@@ -211,8 +221,11 @@ static inline void sx_pool_del(sx_pool* pool, void* ptr)
 
         page = page->next;
     }
-    sx_assert(0 && "pointer does not blong to the pool");
+    sx_assertf(0, "pointer does not blong to the pool");
 }
 
+#define sx_pool_create(_alloc, _item_sz, _capacity) \
+    sx__pool_create(_alloc, (_item_sz), (_capacity), __FILE__, SX_FUNCTION, __LINE__)
+
 #define sx_pool_new_and_grow(_pool, _alloc) \
-    (sx_pool_full(_pool) ? sx_pool_grow(_pool, _alloc) : 0, sx_pool_new(_pool))
+    (sx_pool_full(_pool) ? sx_pool_grow(_pool, _alloc, __FILE__, SX_FUNCTION, __LINE__) : 0, sx_pool_new(_pool))

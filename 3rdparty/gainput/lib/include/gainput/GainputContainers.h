@@ -85,9 +85,6 @@ inline void MurmurHash3_x86_32(const void * key, int len, uint32_t seed, void * 
 	*(uint32_t*)out = h1;
 }
 
-// -- MurmurHash3 end --
-
-
 /// A std::vector-like data container for POD-types.
 /**
  * \tparam T A POD-type to hold in this container.
@@ -340,7 +337,7 @@ public:
 		Node node;
 		node.first = k;
 		node.second = v;
-		node.next = InvalidKey;
+		node.next = (uint32_t)InvalidKey;
 		values_.push_back(node);
 
 		++size_;
@@ -438,7 +435,7 @@ private:
 		Array<Node> values(allocator_, values_.size());
 
 		for (size_t i = 0; i < newSize; ++i)
-			keys.push_back(InvalidKey);
+			keys.push_back((uint32_t)InvalidKey);
 
 		keys_.swap(keys);
 		values_.swap(values);

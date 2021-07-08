@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sx/math.h"
+#include "sx/math-types.h"
 
 #include "imgui.h"
 
@@ -8,14 +8,36 @@ typedef struct rizz_mem_info rizz_mem_info;
 typedef struct rizz_gfx_trace_info rizz_gfx_trace_info;
 typedef struct ImDrawList ImDrawList;
 
-typedef enum { GIZMO_MODE_LOCAL, GIZMO_MODE_WORLD } gizmo_mode;
+typedef enum { GIZMO_MODE_LOCAL, GIZMO_MODE_WORLD } imgui_gizmo_mode;
+
+// Gizmo
+typedef struct rizz_api_imguizmo {
+    bool (*hover)();
+    bool (*is_using)();
+    void (*set_current_window)();
+    void (*set_rect)(const sx_rect rc);
+    void (*set_ortho)(bool ortho);
+    void (*enable)(bool enable);
+    void (*decompose_mat4)(const sx_mat4* mat, sx_vec3* translation, sx_vec3* rotation, sx_vec3* scale);
+    void (*compose_mat4)(sx_mat4* mat, sx_vec3 translation, sx_vec3 rotation, sx_vec3 scale);
+    void (*translate)(sx_mat4* mat, const sx_mat4* view, const sx_mat4* proj, imgui_gizmo_mode mode,
+                      sx_mat4* delta_mat, sx_vec3* snap);
+    void (*rotation)(sx_mat4* mat, const sx_mat4* view, const sx_mat4* proj, imgui_gizmo_mode mode,
+                     sx_mat4* delta_mat, float* snap);
+    void (*scale)(sx_mat4* mat, const sx_mat4* view, const sx_mat4* proj, imgui_gizmo_mode mode,
+                  sx_mat4* delta_mat, float* snap);
+} rizz_api_imguizmo;
 
 typedef struct rizz_api_imgui_extra {
+    rizz_api_imguizmo gizmo;
+
     // these ebuggers are used to monitor inner workings of the engine
     // recommended usage is to use `the_core` API equivalants instead
-    void (*memory_debugger)(const rizz_mem_info* info, bool* p_open);
     void (*graphics_debugger)(const rizz_gfx_trace_info* info, bool* p_open);
     void (*show_log)(bool* p_open);
+
+    void (*dual_progress_bar)(float fraction1, float fraction2, const sx_vec2 ctrl_size,
+                              const char* overlay1, const char* overlay2);
 
     // Full screen 2D drawing
     // You can begin by calling `begin_fullscreen_draw`, fetch and keep the ImDrawList
@@ -32,24 +54,17 @@ typedef struct rizz_api_imgui_extra {
     bool (*is_capturing_mouse)(void);
     bool (*is_capturing_keyboard)(void);
 
-    // Gizmo
-    // use `gizmo_using` to determine if the user is working with gizmo, so you can freeze other stuff
-    // 
-    bool (*gizmo_hover)();
-    bool (*gizmo_using)();
-    void (*gizmo_set_current_window)();
-    void (*gizmo_set_rect)(const sx_rect rc);
-    void (*gizmo_set_ortho)(bool ortho);
-    void (*gizmo_enable)(bool enable);
-    void (*gizmo_decompose_mat4)(const sx_mat4* mat, sx_vec3* translation, sx_vec3* rotation,
-                                 sx_vec3* scale);
-    void (*gizmo_compose_mat4)(sx_mat4* mat, const sx_vec3 translation, const sx_vec3 rotation,
-                               const sx_vec3 scale);
-    void (*gizmo_translate)(sx_mat4* mat, const sx_mat4* view, const sx_mat4* proj, gizmo_mode mode,
-                            sx_mat4* delta_mat, sx_vec3* snap);
-    void (*gizmo_rotation)(sx_mat4* mat, const sx_mat4* view, const sx_mat4* proj, gizmo_mode mode,
-                           sx_mat4* delta_mat, float* snap);
-    void (*gizmo_scale)(sx_mat4* mat, const sx_mat4* view, const sx_mat4* proj, gizmo_mode mode,
-                        sx_mat4* delta_mat, float* snap);
+    // returns dock space id (or zero if docking is disabled), 
+    // which can be used inside the program to get different docking views
+    // particularly useful for drawing inside viewports
+    // example:  
+    //      ImGuiDockNode* cnode = the_imgui->DockBuilderGetCentralNode(the_imguix->dock_space_id());
+    //      SetRenderViewport(cnode->Pos.x, cnode->Pos.y, cnode->Size.x, cnode->Size.y);
+    ImGuiID (*dock_space_id)(void);
 
+    void (*label)(const char* name, const char* fmt, ...);
+    void (*label_colored)(const ImVec4* name_color, const ImVec4* text_color, const char* name, const char* fmt, ...);
+    void (*label_spacing)(float offset, float spacing, const char* name, const char* fmt, ...);
+    void (*label_colored_spacing)(const ImVec4* name_color, const ImVec4* text_color, float offset, float spacing, 
+                                  const char* name, const char* fmt, ...);
 } rizz_api_imgui_extra;

@@ -24,6 +24,10 @@
 #        define SX_CONFIG_DEBUG_ALLOCATOR 1
 #    endif
 
+#    ifndef SX_CONFIG_ENABLE_ASSERT
+#        define SX_CONFIG_ENABLE_ASSERT 1
+#    endif
+
 // There is an issue with msvc+clang_c2 where NDEBUG (and some other release flags) are always
 // defined
 #    ifdef NDEBUG
@@ -33,7 +37,7 @@
 #    ifndef SX_DEBUG
 #        define SX_DEBUG 1
 #    endif
-#endif
+#endif  // _DEBUG || SX_DEBUG
 
 #ifndef SX_DEBUG
 #    define SX_DEBUG 0
@@ -41,6 +45,15 @@
 
 #ifndef SX_CONFIG_DEBUG_ALLOCATOR
 #    define SX_CONFIG_DEBUG_ALLOCATOR 0
+#endif
+
+#ifndef SX_CONFIG_ENABLE_ASSERT
+#    define SX_CONFIG_ENABLE_ASSERT 1
+#endif
+
+// define SX_CONFIG_DISABLE_ASSERT_ALWAYS=1 to disable sx_assert_always 
+#ifndef SX_CONFIG_DISABLE_ASSERT_ALWAYS
+#    define SX_CONFIG_DISABLE_ASSERT_ALWAYS 0
 #endif
 
 // Natural aligment is the default memory alignment for each platform
@@ -78,72 +91,17 @@
 #   define SX_CONFIG_ARRAY_INIT_SIZE 8
 #endif
 
-#if defined(_MSC_VER) && 0
-// Macros for stdint.h definitions
-// There are some problems with intellisense+gcc and I had to define these (only works in editor,
-// the compiler defines them by default)
-// TODO: make some of them with cmake --config
-#    ifndef __INT32_TYPE__
-#        define __INT32_TYPE__ int
-#    endif
+// This preprocessor applies a trick for hot functions that need to be inlined even in debug builds
+// only applies to UC_ALWAYS_INLINE functions, but leaves SX_INLINE not inlined
+// And also, the build should be compiled with /Ob1 flag
+#ifndef SX_CONFIG_FORCE_INLINE_DEBUG
+#   define SX_CONFIG_FORCE_INLINE_DEBUG 0
+#endif
 
-#    ifndef __UINT32_TYPE__
-#        define __UINT32_TYPE__ unsigned int
-#    endif
+#ifndef SX_CONFIG_INCLUDE_BANNED 
+#   define SX_CONFIG_INCLUDE_BANNED 0
+#endif
 
-#    ifndef __INT64_TYPE__
-#        ifdef _MSC_VER
-#            define __INT64_TYPE__ __int64
-#        else
-#            define __INT64_TYPE__ long long
-#        endif
-#    endif
-
-#    ifndef __UINT64_TYPE__
-#        ifdef _MSC_VER
-#            define __UINT64_TYPE__ unsigned __int64
-#        else
-#            define __UINT64_TYPE__ unsigned long long
-#        endif
-#    endif
-
-#    ifndef __INT8_TYPE__
-#        define __INT8_TYPE__ char
-#    endif
-
-#    ifndef __UINT8_TYPE__
-#        define __UINT8_TYPE__ unsigned char
-#    endif
-
-#    ifndef __INT16_TYPE__
-#        define __INT16_TYPE__ short
-#    endif
-
-#    ifndef __UINT16_TYPE__
-#        define __UINT16_TYPE__ unsigned short
-#    endif
-
-#    ifndef __INTPTR_WIDTH__
-#        if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || \
-            defined(__64BIT__) || defined(__LP64__)
-#            define uintptr_t uint64_t
-#            define intptr_t int64_t
-#        else
-#            define uintptr_t uint32_t
-#            define intptr_t int32_t
-#        endif
-#    endif
-
-#    ifndef __INT_MAX__
-#        define __INT_MAX__ 2147483647
-#    endif
-
-#    ifndef __LONG_MAX__
-#        if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || \
-            defined(__64BIT__) || defined(__LP64__)
-#            define __LONG_MAX__ 9223372036854775807L
-#        else
-#            define __LONG_MAX__ 2147483647L
-#        endif
-#    endif
+#ifndef SX_CONFIG_OBSOLETE_CODE
+#   define SX_CONFIG_OBSOLETE_CODE 1
 #endif

@@ -615,6 +615,8 @@
 extern "C" {
 #endif
 
+#define SAPP_SWAP_INTERVAL_NOSYNC 0x7fffffff
+
 enum {
     SAPP_MAX_TOUCHPOINTS = 8,
     SAPP_MAX_MOUSEBUTTONS = 3,
@@ -652,6 +654,9 @@ typedef enum sapp_event_type {
     SAPP_EVENTTYPE_UPDATE_CURSOR,
     SAPP_EVENTTYPE_QUIT_REQUESTED,
     SAPP_EVENTTYPE_CLIPBOARD_PASTED,
+    SAPP_EVENTTYPE_RESIZING,
+    SAPP_EVENTTYPE_MOVING,
+    SAPP_EVENTTYPE_MOVED,
     _SAPP_EVENTTYPE_NUM,
     _SAPP_EVENTTYPE_FORCE_U32 = 0x7FFFFFFF
 } sapp_event_type;
@@ -840,7 +845,7 @@ typedef struct sapp_desc {
     int width;                          /* the preferred width of the window / canvas */
     int height;                         /* the preferred height of the window / canvas */
     int sample_count;                   /* MSAA sample count */
-    int swap_interval;                  /* the preferred swap interval (ignored on some platforms) */
+    int swap_interval;                  /* the preferred swap interval (ignored on some platforms), set to SAPP_SWAP_INTERVAL_NOSYNC to disable it */
     bool high_dpi;                      /* whether the rendering canvas is full-resolution on HighDPI displays */
     bool fullscreen;                    /* whether the window should be created in fullscreen mode */
     bool alpha;                         /* whether the framebuffer should have an alpha channel (ignored on some platforms) */
@@ -4692,6 +4697,15 @@ _SOKOL_PRIVATE LRESULT CALLBACK _sapp_win32_wndproc(HWND hWnd, UINT uMsg, WPARAM
                 break;
             case WM_ERASEBKGND:
                 return 1;
+            case WM_SIZING:
+                _sapp_win32_app_event(SAPP_EVENTTYPE_RESIZING);
+                break;
+            case WM_MOVING:
+                _sapp_win32_app_event(SAPP_EVENTTYPE_MOVING);
+                break;
+            case WM_MOVE:
+                _sapp_win32_app_event(SAPP_EVENTTYPE_MOVED);
+                break;
             case WM_SIZE:
                 {
                     const bool iconified = wParam == SIZE_MINIMIZED;
@@ -4714,6 +4728,7 @@ _SOKOL_PRIVATE LRESULT CALLBACK _sapp_win32_wndproc(HWND hWnd, UINT uMsg, WPARAM
                     }
                 }
                 break;
+
             case WM_LBUTTONDOWN:
                 _sapp_win32_mouse_event(SAPP_EVENTTYPE_MOUSE_DOWN, SAPP_MOUSEBUTTON_LEFT);
                 break;
@@ -4986,7 +5001,8 @@ _SOKOL_PRIVATE void _sapp_run(const sapp_desc* desc) {
         }
         _sapp_frame();
         #if defined(SOKOL_D3D11)
-            IDXGISwapChain_Present(_sapp_dxgi_swap_chain, _sapp.swap_interval, 0);
+            IDXGISwapChain_Present(_sapp_dxgi_swap_chain, 
+                                   _sapp.swap_interval != SAPP_SWAP_INTERVAL_NOSYNC ? _sapp.swap_interval : 0, 0);
             if (IsIconic(_sapp_win32_hwnd)) {
                 Sleep(16 * _sapp.swap_interval);
             }
@@ -7604,7 +7620,7 @@ _SOKOL_PRIVATE void _sapp_run(const sapp_desc* desc) {
     _sapp_glx_create_context();
     _sapp.valid = true;
     _sapp_x11_show_window();
-    _sapp_glx_swapinterval(_sapp.swap_interval);
+    _sapp_glx_swapinterval(_sapp.swap_interval != SAPP_SWAP_INTERVAL_NOSYNC ? _sapp.swap_interval : 0);
     XFlush(_sapp_x11_display);
     while (!_sapp.quit_ordered) {
         _sapp_glx_make_current();

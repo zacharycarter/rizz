@@ -32,7 +32,18 @@ void rizz__core_release();
 void rizz__core_frame();
 void rizz__core_fix_callback_ptrs(const void** ptrs, const void** new_ptrs, int num_ptrs);
 
-// clang-format off
+typedef struct mem_trace_context mem_trace_context;
+bool rizz__mem_init(uint32_t opts);
+void rizz__mem_release(void);
+sx_alloc* rizz__mem_create_allocator(const char* name, uint32_t mem_opts, const char* parent, const sx_alloc* alloc);
+void rizz__mem_destroy_allocator(sx_alloc* alloc);
+void rizz__mem_allocator_clear_trace(sx_alloc* alloc);
+void rizz__mem_show_debugger(bool*);
+void rizz__mem_reload_modules(void);
+
+// windows.h
+bool rizz__win_get_vstudio_dir(char* vspath, size_t vspath_size);
+
 // logging
 #define rizz__log_info(_text, ...)     the__core.print_info(0, __FILE__, __LINE__, _text, ##__VA_ARGS__)
 #define rizz__log_debug(_text, ...)    the__core.print_debug(0, __FILE__, __LINE__, _text, ##__VA_ARGS__)
@@ -49,6 +60,9 @@ void rizz__core_fix_callback_ptrs(const void** ptrs, const void** new_ptrs, int 
 #define rizz__coro_yieldn(_n)              the__core.coro_yield(&__transfer.from, (_n))
 #define rizz__coro_invoke(_name, _user)    the__core.coro_invoke(coro__##_name, (_user))
 
+#define rizz__with_temp_alloc(_name) sx_with(const sx_alloc* _name = the__core.tmp_alloc_push(), \
+                                             the__core.tmp_alloc_pop()) 
+
 #define rizz__profile_begin(_name, _flags) \
         static uint32_t rmt_sample_hash_##_name = 0; \
         uint32_t rmt_sample_raii_##_name; \
@@ -57,14 +71,19 @@ void rizz__core_fix_callback_ptrs(const void** ptrs, const void** new_ptrs, int 
         (void)rmt_sample_raii_##_name;   \
         the__core.end_profile_sample();
 
-// clang-format on
+// usage pattern:
+// rizz__profile(name) {
+//  ...
+// } // automatically ends profile sample
+#define rizz__profile(_name) static uint32_t sx_concat(rmt_sample_hash_, _name) = 0; \
+        sx_defer(the__core.begin_profile_sample(sx_stringize(_name), 0, &sx_concat(rmt_sample_hash_, _name)), \
+                 the__core.end_profile_sample())
 
 bool rizz__vfs_init(const sx_alloc* alloc);
 void rizz__vfs_release();
 void rizz__vfs_async_update();
 
 bool rizz__asset_init(const sx_alloc* alloc, const char* dbfile, const char* variation);
-bool rizz__asset_save_meta_cache();
 bool rizz__asset_dump_unused(const char* filepath);
 void rizz__asset_release();
 void rizz__asset_update();
@@ -75,18 +94,6 @@ void rizz__gfx_trace_reset_frame_stats(rizz_gfx_perframe_trace_zone zone);
 void rizz__gfx_execute_command_buffers_final();
 void rizz__gfx_update();
 void rizz__gfx_commit_gpu();
-
-bool rizz__refl_init(const sx_alloc* alloc, int max_regs sx_default(0));
-void rizz__refl_release();
-
-// clang-format off
-#define rizz__refl_enum(_type, _name)                    \
-        the__refl._reg(RIZZ_REFL_ENUM, (void*)(intptr_t)_name, #_type, #_name, NULL, "", sizeof(_type), 0)
-#define rizz__refl_func(_type, _name, _desc)             \
-        the__refl._reg(RIZZ_REFL_FUNC, &_name, #_type, #_name, NULL, _desc, sizeof(void*), 0)
-#define rizz__refl_field(_struct, _type, _name, _desc)   \
-        the__refl._reg(RIZZ_REFL_FIELD, &(((_struct*)0)->_name), #_type, #_name, #_struct, _desc, sizeof(_type), sizeof(_struct))
-// clang-format on
 
 bool rizz__http_init(const sx_alloc* alloc);
 void rizz__http_release();

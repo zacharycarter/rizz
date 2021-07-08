@@ -33,7 +33,10 @@
 // clang-format off
 #    define VC_EXTRALEAN
 #    define WIN32_LEAN_AND_MEAN
+SX_PRAGMA_DIAGNOSTIC_PUSH()
+SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(5105)
 #    include <windows.h>
+SX_PRAGMA_DIAGNOSTIC_POP()
 #    include <limits.h>
 #    include <synchapi.h>
 // clang-format on
@@ -108,7 +111,7 @@ void sx_semaphore_init(sx_sem* sem)
 {
     sx__sem* _sem = (sx__sem*)sem->data;
     _sem->handle = dispatch_semaphore_create(0);
-    sx_assert(_sem->handle != NULL && "dispatch_semaphore_create failed");
+    sx_assertf(_sem->handle != NULL, "dispatch_semaphore_create failed");
 }
 
 void sx_semaphore_release(sx_sem* sem)
@@ -145,7 +148,7 @@ sx_tls sx_tls_create()
 {
     pthread_key_t key;
     int r = pthread_key_create(&key, NULL);
-    sx_assert(r == 0 && "pthread_key_create failed");
+    sx_assertf(r == 0, "pthread_key_create failed");
     sx_unused(r);
     return (sx_tls)(uintptr_t)key;
 }
@@ -154,7 +157,7 @@ void sx_tls_destroy(sx_tls tls)
 {
     pthread_key_t key = (pthread_key_t)(uintptr_t)tls;
     int r = pthread_key_delete(key);
-    sx_assert(r == 0 && "pthread_key_delete failed");
+    sx_assertf(r == 0, "pthread_key_delete failed");
     sx_unused(r);
 }
 
@@ -162,7 +165,7 @@ void sx_tls_set(sx_tls tls, void* data)
 {
     pthread_key_t key = (pthread_key_t)(uintptr_t)tls;
     int r = pthread_setspecific(key, data);
-    sx_assert(r == 0 && "pthread_setspcific failed");
+    sx_assertf(r == 0, "pthread_setspcific failed");
     sx_unused(r);
 }
 
@@ -208,9 +211,9 @@ sx_thread* sx_thread_create(const sx_alloc* alloc, sx_thread_cb* callback, void*
     pthread_attr_t attr;
     int r = pthread_attr_init(&attr);
     sx_unused(r);
-    sx_assert(r == 0 && "pthread_attr_init failed");
+    sx_assertf(r == 0, "pthread_attr_init failed");
     r = pthread_attr_setstacksize(&attr, thrd->stack_sz);
-    sx_assert(r == 0 && "pthread_attr_setstacksize failed");
+    sx_assertf(r == 0, "pthread_attr_setstacksize failed");
 
 #    if SX_PLATFORM_APPLE
     thrd->name[0] = 0;
@@ -219,7 +222,7 @@ sx_thread* sx_thread_create(const sx_alloc* alloc, sx_thread_cb* callback, void*
 #    endif
 
     r = pthread_create(&thrd->handle, &attr, thread_fn, thrd);
-    sx_assert(r == 0 && "pthread_create failed");
+    sx_assertf(r == 0, "pthread_create failed");
 
     // Ensure that thread callback is running
     sx_semaphore_wait(&thrd->sem, -1);
@@ -234,7 +237,7 @@ sx_thread* sx_thread_create(const sx_alloc* alloc, sx_thread_cb* callback, void*
 
 int sx_thread_destroy(sx_thread* thrd, const sx_alloc* alloc)
 {
-    sx_assert(thrd->running && "Thread is not running!");
+    sx_assertf(thrd->running, "Thread is not running!");
 
     union {
         void* ptr;
@@ -295,7 +298,7 @@ void sx_mutex_init(sx_mutex* mutex)
     sx_assert(r == 0);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
     r = pthread_mutex_init(&_m->handle, &attr);
-    sx_assert(r == 0 && "pthread_mutex_init failed");
+    sx_assertf(r == 0, "pthread_mutex_init failed");
     sx_unused(r);
 }
 
@@ -305,19 +308,19 @@ void sx_mutex_release(sx_mutex* mutex)
     pthread_mutex_destroy(&_m->handle);
 }
 
-void sx_mutex_lock(sx_mutex* mutex)
+void sx_mutex_enter(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     pthread_mutex_lock(&_m->handle);
 }
 
-void sx_mutex_unlock(sx_mutex* mutex)
+void sx_mutex_exit(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     pthread_mutex_unlock(&_m->handle);
 }
 
-bool sx_mutex_trylock(sx_mutex* mutex)
+bool sx_mutex_try(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     return pthread_mutex_trylock(&_m->handle) == 0;
@@ -346,10 +349,10 @@ void sx_signal_init(sx_signal* sig)
     sx__signal* _sig = (sx__signal*)sig->data;
     _sig->value = 0;
     int r = pthread_mutex_init(&_sig->mutex, NULL);
-    sx_assert(r == 0 && "pthread_mutex_init failed");
+    sx_assertf(r == 0, "pthread_mutex_init failed");
 
     r = pthread_cond_init(&_sig->cond, NULL);
-    sx_assert(r == 0 && "pthread_cond_init failed");
+    sx_assertf(r == 0, "pthread_cond_init failed");
 
     sx_unused(r);
 }
@@ -395,6 +398,7 @@ bool sx_signal_wait(sx_signal* sig, int msecs)
     return ok;
 }
 
+
 // Semaphore (posix only)
 #    if !SX_PLATFORM_APPLE
 void sx_semaphore_init(sx_sem* sem)
@@ -402,10 +406,10 @@ void sx_semaphore_init(sx_sem* sem)
     sx__sem* _sem = (sx__sem*)sem->data;
     _sem->count = 0;
     int r = pthread_mutex_init(&_sem->mutex, NULL);
-    sx_assert(r == 0 && "pthread_mutex_init failed");
+    sx_assertf(r == 0, "pthread_mutex_init failed");
 
     r = pthread_cond_init(&_sem->cond, NULL);
-    sx_assert(r == 0 && "pthread_cond_init failed");
+    sx_assertf(r == 0, "pthread_cond_init failed");
 
     sx_unused(r);
 }
@@ -465,7 +469,7 @@ bool sx_semaphore_wait(sx_sem* sem, int msecs)
 sx_tls sx_tls_create()
 {
     DWORD tls_id = TlsAlloc();
-    sx_assert(tls_id != TLS_OUT_OF_INDEXES && "Failed to create tls!");
+    sx_assertf(tls_id != TLS_OUT_OF_INDEXES, "Failed to create tls!");
     return (sx_tls)(uintptr_t)tls_id;
 }
 
@@ -497,19 +501,19 @@ void sx_mutex_release(sx_mutex* mutex)
     DeleteCriticalSection(&_m->handle);
 }
 
-void sx_mutex_lock(sx_mutex* mutex)
+void sx_mutex_enter(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     EnterCriticalSection(&_m->handle);
 }
 
-void sx_mutex_unlock(sx_mutex* mutex)
+void sx_mutex_exit(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     LeaveCriticalSection(&_m->handle);
 }
 
-bool sx_mutex_trylock(sx_mutex* mutex)
+bool sx_mutex_try(sx_mutex* mutex)
 {
     sx__mutex* _m = (sx__mutex*)mutex->data;
     return TryEnterCriticalSection(&_m->handle) == TRUE;
@@ -520,7 +524,7 @@ void sx_semaphore_init(sx_sem* sem)
 {
     sx__sem* _sem = (sx__sem*)sem->data;
     _sem->handle = CreateSemaphoreA(NULL, 0, LONG_MAX, NULL);
-    sx_assert(_sem->handle != NULL && "Failed to create semaphore");
+    sx_assertf(_sem->handle != NULL, "Failed to create semaphore");
 }
 
 void sx_semaphore_release(sx_sem* sem)
@@ -549,13 +553,13 @@ void sx_signal_init(sx_signal* sig)
     sx__signal* _sig = (sx__signal*)sig->data;
 #    if _WIN32_WINNT >= 0x0600
     BOOL r = InitializeCriticalSectionAndSpinCount(&_sig->mutex, 32);
-    sx_assert(r && "InitializeCriticalSectionAndSpinCount failed");
+    sx_assertf(r, "InitializeCriticalSectionAndSpinCount failed");
     sx_unused(r);
     InitializeConditionVariable(&_sig->cond);
     _sig->value = 0;
 #    else
     _sig->e = CreateEvent(NULL, FALSE, FALSE, NULL);
-    sx_assert(_sig->e && "CreateEvent failed");
+    sx_assertf(_sig->e, "CreateEvent failed");
 #    endif
 }
 
@@ -630,7 +634,7 @@ sx_thread* sx_thread_create(const sx_alloc* alloc, sx_thread_cb* callback, void*
 
     thrd->handle =
         CreateThread(NULL, thrd->stack_sz, (LPTHREAD_START_ROUTINE)thread_fn, thrd, 0, NULL);
-    sx_assert(thrd->handle != NULL && "CreateThread failed");
+    sx_assertf(thrd->handle != NULL, "CreateThread failed");
 
     // Ensure that thread callback is running
     sx_semaphore_wait(&thrd->sem, -1);
@@ -643,7 +647,7 @@ sx_thread* sx_thread_create(const sx_alloc* alloc, sx_thread_cb* callback, void*
 
 int sx_thread_destroy(sx_thread* thrd, const sx_alloc* alloc)
 {
-    sx_assert(thrd->running && "Thread is not running!");
+    sx_assertf(thrd->running, "Thread is not running!");
 
     DWORD exit_code;
     WaitForSingleObject(thrd->handle, INFINITE);
@@ -686,10 +690,16 @@ void sx_thread_setname(sx_thread* thrd, const char* name)
     tn.id = thrd->thread_id;
     tn.flags = 0;
 
-    __try {
-        RaiseException(0x406d1388, 0, sizeof(tn) / 4, (ULONG_PTR*)(&tn));
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-    }
+    #if !SX_CRT_MINGW
+        __try {
+        #endif
+
+            RaiseException(0x406d1388, 0, sizeof(tn) / 4, (ULONG_PTR*)(&tn));
+
+        #if !SX_CRT_MINGW
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+    #endif
 }
 
 #else
@@ -711,6 +721,86 @@ uint32_t sx_thread_tid()
 #elif SX_PLATFORM_HURD
     return (pthread_t)pthread_self();
 #else
-    sx_assert(0 && "Tid not implemented");
+    sx_assertf(0, "Tid not implemented");
 #endif    // SX_PLATFORM_
 }
+
+// TODO: replace this for our current atomic functions in the future
+#include "../3rdparty/c89atomic/c89atomic.h"
+
+typedef struct sx__padded_flag
+{
+    c89atomic_flag flag;
+    uint8_t padding[SX_CACHE_LINE_SIZE-1];
+} sx__padded_flag;
+
+typedef sx_align_decl(SX_CACHE_LINE_SIZE, struct) sx_anderson_lock_t
+{
+    sx_align_decl(SX_CACHE_LINE_SIZE, sx__padded_flag*) locked;
+    sx_align_decl(SX_CACHE_LINE_SIZE, c89atomic_uint64) next_free_idx;
+    sx_align_decl(SX_CACHE_LINE_SIZE, c89atomic_uint64) next_serving_idx;
+    int max_threads;
+} sx_anderson_lock_t;
+
+sx_anderson_lock_t* sx_anderson_lock_create(const sx_alloc* alloc, int max_threads) 
+{
+    sx_assert(max_threads > 0);
+
+    sx_anderson_lock_t* l = sx_calloc(alloc, sizeof(sx_anderson_lock_t) + max_threads*sizeof(sx__padded_flag));
+    if (!l) {
+        return NULL;
+    }
+    l->max_threads = max_threads;
+    l->next_serving_idx = 1;
+
+    l->locked = (sx__padded_flag*)(l + 1);
+
+    for (int i = 1; i < max_threads; i++) {
+        l->locked[i].flag = 1;
+    }
+
+    return l;
+}
+
+void sx_anderson_lock_destroy(sx_anderson_lock_t* lock, const sx_alloc* alloc) 
+{
+    sx_free(alloc, lock);
+}
+
+void sx_anderson_lock_enter(sx_anderson_lock_t* lock) 
+{
+    const uint64_t index = 
+        c89atomic_fetch_add_explicit_64(&lock->next_free_idx, 1, c89atomic_memory_order_release) % lock->max_threads;
+    c89atomic_flag* flag = &lock->locked[index].flag;
+
+    // ensure overflow never happens
+    if (index == 0) {
+        c89atomic_fetch_sub_64(&lock->next_free_idx, lock->max_threads);
+    }
+
+    // TODO: the LOCK_MAXTIME and LOCK_PRESPIN likely need more tweaking
+    // sx_yield_cpu apparantly has a lot of latency in modern cpus, so this loop is a workaround
+    // Reference: https://software.intel.com/content/www/us/en/develop/articles/a-common-construct-to-avoid-the-contention-of-threads-architecture-agnostic-spin-wait-loops.html
+    int counter = 0;
+    
+    while (c89atomic_load_explicit_8(flag, c89atomic_memory_order_acquire)) {
+        if ((++counter & SX__LOCK_PRESPIN) == 0) {
+            sx_track_contention();
+            sx_thread_yield();  // too much waiting, relief control of the current thread
+        } else {
+            uint64_t prev = sx_cycle_clock();
+            do {
+                sx_yield_cpu();
+            } while ((sx_cycle_clock() - prev) < SX__LOCK_MAXTIME);
+        }
+    }
+
+    c89atomic_store_explicit_8(flag, 1, c89atomic_memory_order_release);
+}
+
+void sx_anderson_lock_exit(sx_anderson_lock_t* lock) 
+{
+    const uint64_t index = c89atomic_fetch_add_64(&lock->next_serving_idx, 1);
+    c89atomic_store_explicit_8(&lock->locked[index%lock->max_threads].flag, 0, c89atomic_memory_order_release);
+}
+

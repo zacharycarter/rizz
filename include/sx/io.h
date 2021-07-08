@@ -94,7 +94,7 @@
 typedef struct sx_alloc sx_alloc;
 
 #ifndef sx_data_truncate
-#    define sx_data_truncate() sx_assert_rel(0 && "Data truncated !")
+#    define sx_data_truncate() sx_assert_alwaysf(0, "Data truncated !")
 #endif
 
 typedef enum sx_whence { SX_WHENCE_BEGIN = 0, SX_WHENCE_CURRENT, SX_WHENCE_END } sx_whence;
@@ -104,6 +104,7 @@ typedef struct sx_mem_block {
     const sx_alloc* alloc;
     void* data;
     int64_t size;
+    int64_t start_offset;         // incremented offset. the actual *ptr would be (uint8_t*)ptr-offset
     int align;
     int volatile refcount; 
 } sx_mem_block;
@@ -114,6 +115,7 @@ SX_API sx_mem_block* sx_mem_create_block(const sx_alloc* alloc, int64_t size,
 SX_API sx_mem_block* sx_mem_ref_block(const sx_alloc* alloc, int64_t size, void* data);
 SX_API void sx_mem_destroy_block(sx_mem_block* mem);
 SX_API void sx_mem_addref(sx_mem_block* mem);
+SX_API void sx_mem_addoffset(sx_mem_block* mem, int64_t offset);
 
 SX_API void sx_mem_init_block_ptr(sx_mem_block* mem, void* data, int64_t size);
 SX_API bool sx_mem_grow(sx_mem_block** pmem, int64_t size);
@@ -227,19 +229,15 @@ typedef struct sx_iff_file {
         sx_mem_reader* mread;
         sx_mem_writer* mwrite;
         sx_file* disk;
-    };
+    } io;
     bool read_all;
 } sx_iff_file;
 #pragma pack(pop)
 
-SX_API bool sx_iff_init_from_file_reader(sx_iff_file* iff, sx_file* file, sx_iff_flags flags,
-                                         const sx_alloc* alloc);
-SX_API bool sx_iff_init_from_file_writer(sx_iff_file* iff, sx_file* file, sx_iff_flags flags,
-                                         const sx_alloc* alloc);
-SX_API bool sx_iff_init_from_mem_reader(sx_iff_file* iff, sx_mem_reader* mread, sx_iff_flags flags,
-                                       const sx_alloc* alloc);
-SX_API bool sx_iff_init_from_mem_writer(sx_iff_file* iff, sx_mem_writer* mwrite, sx_iff_flags flags,
-                                        const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_file_reader(sx_iff_file* iff, sx_file* file, sx_iff_flags flags, const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_file_writer(sx_iff_file* iff, sx_file* file, sx_iff_flags flags, const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_mem_reader(sx_iff_file* iff, sx_mem_reader* mread, sx_iff_flags flags, const sx_alloc* alloc);
+SX_API bool sx_iff_init_from_mem_writer(sx_iff_file* iff, sx_mem_writer* mwrite, sx_iff_flags flags, const sx_alloc* alloc);
 SX_API void sx_iff_release(sx_iff_file* iff);
 
 SX_API int sx_iff_get_chunk(sx_iff_file* iff, uint32_t fourcc, int parent_id);

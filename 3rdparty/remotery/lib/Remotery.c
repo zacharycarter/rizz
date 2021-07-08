@@ -62,7 +62,6 @@
 static rmtSettings g_Settings;
 static rmtBool g_SettingsInitialized = RMT_FALSE;
 
-
 /*
 ------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------------
@@ -3142,7 +3141,7 @@ static rmtError WebSocketHandshake(TCPSocket* tcp_socket, rmtPStr limit_host)
     {
         r_size_t limit_host_len = strnlen_s(limit_host, 128);
         char* found = NULL;
-        if (strstr_s(host, buffer_end - host, limit_host, limit_host_len, &found) != EOK)
+        if (strstr_s(host, (r_size_t)(buffer_end - host), limit_host, limit_host_len, &found) != EOK)
             return RMT_ERROR_WEBSOCKET_HANDSHAKE_BAD_HOST;
     }
 
@@ -3150,14 +3149,14 @@ static rmtError WebSocketHandshake(TCPSocket* tcp_socket, rmtPStr limit_host)
     key = GetField(buffer, buffer_len, "Sec-WebSocket-Key:");
     if (key == NULL)
         return RMT_ERROR_WEBSOCKET_HANDSHAKE_NO_KEY;
-    if (strstr_s(key, buffer_end - key, "\r\n", 2, &key_end) != EOK)
+    if (strstr_s(key, (r_size_t)(buffer_end - key), "\r\n", 2, &key_end) != EOK)
         return RMT_ERROR_WEBSOCKET_HANDSHAKE_BAD_KEY;
     *key_end = 0;
 
     // Concatenate the browser's key with the WebSocket Protocol GUID and base64 encode
     // the hash, to prove to the browser that this is a bonafide WebSocket server
     buffer[0] = 0;
-    if (strncat_s(buffer, buffer_len, key, key_end - key) != EOK)
+    if (strncat_s(buffer, buffer_len, key, (r_size_t)(key_end - key)) != EOK)
         return RMT_ERROR_WEBSOCKET_HANDSHAKE_STRING_FAIL;
     if (strncat_s(buffer, buffer_len, websocket_guid, sizeof(websocket_guid)) != EOK)
         return RMT_ERROR_WEBSOCKET_HANDSHAKE_STRING_FAIL;
@@ -4708,6 +4707,10 @@ static rmtError Remotery_SendSampleTreeMessage(Remotery* rmt, Message* message)
         rmt_BeginCPUSample(Server_Send, RMTSF_Aggregate);
         error = Server_Send(rmt->server, bin_buf->data, bin_buf->bytes_used, 50000);
         rmt_EndCPUSample();
+
+        if (g_Settings.view_handler) {
+            g_Settings.view_handler(bin_buf->data, bin_buf->bytes_used, g_Settings.view_handler_context);
+        }
     }
 
     // Release the sample tree back to its allocator
@@ -5169,6 +5172,8 @@ RMT_API rmtSettings* _rmt_Settings(void)
         g_Settings.input_handler = NULL;
         g_Settings.input_handler_context = NULL;
         g_Settings.logFilename = "rmtLog.txt";
+        g_Settings.view_handler = NULL;
+        g_Settings.view_handler_context = NULL;
 
         g_SettingsInitialized = RMT_TRUE;
     }
@@ -6076,8 +6081,10 @@ static rmtError D3D11Timestamp_Constructor(D3D11Timestamp* stamp)
     stamp->query_disjoint = NULL;
     stamp->cpu_timestamp = 0;
 
+    rmtError r = Remotery_GetThreadSampler(g_Remotery, &ts);
+    (void)(r);
     assert(g_Remotery != NULL);
-    assert(Remotery_GetThreadSampler(g_Remotery, &ts) == RMT_ERROR_NONE);
+    assert(r == RMT_ERROR_NONE);
     assert(ts->d3d11 != NULL);
     device = ts->d3d11->device;
     last_error = &ts->d3d11->last_error;

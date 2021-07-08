@@ -2,47 +2,72 @@
 
 #include <stdarg.h>
 #include <stdio.h>
-#include "sx/math.h"
+#include "sx/math-types.h"
 
-typedef struct ImGuiStoragePair ImGuiStoragePair;
-typedef struct ImGuiTextRange ImGuiTextRange;
+
+#ifdef _MSC_VER
+typedef unsigned __int64 ImU64;
+#else
+//typedef unsigned long long ImU64;
+#endif
+
+#if !defined(CIMGUI_DEFINE_ENUMS_AND_STRUCTS) && !defined(RIZZ__IMGUI)
+typedef struct ImGuiTableColumnSettings ImGuiTableColumnSettings;
+typedef struct ImGuiTableCellData ImGuiTableCellData;
+typedef struct ImGuiViewportP ImGuiViewportP;
+typedef struct ImGuiWindowDockStyle ImGuiWindowDockStyle;
 typedef struct ImGuiPtrOrIndex ImGuiPtrOrIndex;
 typedef struct ImGuiShrinkWidthItem ImGuiShrinkWidthItem;
-typedef struct ImGuiViewportP ImGuiViewportP;
+typedef struct ImGuiDataTypeTempStorage ImGuiDataTypeTempStorage;
 typedef struct ImVec2ih ImVec2ih;
 typedef struct ImVec1 ImVec1;
-typedef struct ImFontAtlasCustomRect ImFontAtlasCustomRect;
-typedef sx_vec4 ImVec4;
-typedef sx_vec2 ImVec2;
+typedef struct StbTexteditRow StbTexteditRow;
+typedef struct STB_TexteditState STB_TexteditState;
+typedef struct StbUndoState StbUndoState;
+typedef struct StbUndoRecord StbUndoRecord;
 typedef struct ImGuiWindowSettings ImGuiWindowSettings;
 typedef struct ImGuiWindowTempData ImGuiWindowTempData;
 typedef struct ImGuiWindow ImGuiWindow;
+typedef struct ImGuiTableColumnsSettings ImGuiTableColumnsSettings;
+typedef struct ImGuiTableSettings ImGuiTableSettings;
+typedef struct ImGuiTableColumn ImGuiTableColumn;
+typedef struct ImGuiTable ImGuiTable;
 typedef struct ImGuiTabItem ImGuiTabItem;
 typedef struct ImGuiTabBar ImGuiTabBar;
 typedef struct ImGuiStyleMod ImGuiStyleMod;
+typedef struct ImGuiStackSizes ImGuiStackSizes;
 typedef struct ImGuiSettingsHandler ImGuiSettingsHandler;
 typedef struct ImGuiPopupData ImGuiPopupData;
+typedef struct ImGuiOldColumns ImGuiOldColumns;
+typedef struct ImGuiOldColumnData ImGuiOldColumnData;
 typedef struct ImGuiNextItemData ImGuiNextItemData;
 typedef struct ImGuiNextWindowData ImGuiNextWindowData;
+typedef struct ImGuiMetricsConfig ImGuiMetricsConfig;
 typedef struct ImGuiNavMoveResult ImGuiNavMoveResult;
 typedef struct ImGuiMenuColumns ImGuiMenuColumns;
-typedef struct ImGuiItemHoveredDataBackup ImGuiItemHoveredDataBackup;
+typedef struct ImGuiLastItemDataBackup ImGuiLastItemDataBackup;
 typedef struct ImGuiInputTextState ImGuiInputTextState;
 typedef struct ImGuiGroupData ImGuiGroupData;
 typedef struct ImGuiDockNodeSettings ImGuiDockNodeSettings;
 typedef struct ImGuiDockNode ImGuiDockNode;
+typedef struct ImGuiDockRequest ImGuiDockRequest;
 typedef struct ImGuiDockContext ImGuiDockContext;
 typedef struct ImGuiDataTypeInfo ImGuiDataTypeInfo;
-typedef struct ImGuiColumns ImGuiColumns;
-typedef struct ImGuiColumnData ImGuiColumnData;
+typedef struct ImGuiContextHook ImGuiContextHook;
 typedef struct ImGuiColorMod ImGuiColorMod;
 typedef struct ImDrawDataBuilder ImDrawDataBuilder;
 typedef struct ImRect ImRect;
 typedef struct ImBitVector ImBitVector;
+typedef struct ImFontAtlasCustomRect ImFontAtlasCustomRect;
+typedef struct ImDrawCmdHeader ImDrawCmdHeader;
+typedef struct ImGuiStoragePair ImGuiStoragePair;
+typedef struct ImGuiTextRange ImGuiTextRange;
 typedef struct ImGuiWindowClass ImGuiWindowClass;
 typedef struct ImGuiViewport ImGuiViewport;
 typedef struct ImGuiTextFilter ImGuiTextFilter;
 typedef struct ImGuiTextBuffer ImGuiTextBuffer;
+typedef struct ImGuiTableColumnSortSpecs ImGuiTableColumnSortSpecs;
+typedef struct ImGuiTableSortSpecs ImGuiTableSortSpecs;
 typedef struct ImGuiStyle ImGuiStyle;
 typedef struct ImGuiStorage ImGuiStorage;
 typedef struct ImGuiSizeCallbackData ImGuiSizeCallbackData;
@@ -58,6 +83,7 @@ typedef struct ImColor ImColor;
 typedef struct ImFontGlyphRangesBuilder ImFontGlyphRangesBuilder;
 typedef struct ImFontGlyph ImFontGlyph;
 typedef struct ImFontConfig ImFontConfig;
+typedef struct ImFontBuilderIO ImFontBuilderIO;
 typedef struct ImFontAtlas ImFontAtlas;
 typedef struct ImFont ImFont;
 typedef struct ImDrawVert ImDrawVert;
@@ -68,6 +94,8 @@ typedef struct ImDrawData ImDrawData;
 typedef struct ImDrawCmd ImDrawCmd;
 typedef struct ImDrawChannel ImDrawChannel;
 
+typedef union sx_vec2 ImVec2;
+typedef union sx_vec4 ImVec4;
 struct ImDrawChannel;
 struct ImDrawCmd;
 struct ImDrawData;
@@ -77,6 +105,7 @@ struct ImDrawListSplitter;
 struct ImDrawVert;
 struct ImFont;
 struct ImFontAtlas;
+struct ImFontBuilderIO;
 struct ImFontConfig;
 struct ImFontGlyph;
 struct ImFontGlyphRangesBuilder;
@@ -92,6 +121,8 @@ struct ImGuiPlatformMonitor;
 struct ImGuiSizeCallbackData;
 struct ImGuiStorage;
 struct ImGuiStyle;
+struct ImGuiTableSortSpecs;
+struct ImGuiTableColumnSortSpecs;
 struct ImGuiTextBuffer;
 struct ImGuiTextFilter;
 struct ImGuiViewport;
@@ -104,11 +135,14 @@ typedef int ImGuiKey;
 typedef int ImGuiNavInput;
 typedef int ImGuiMouseButton;
 typedef int ImGuiMouseCursor;
+typedef int ImGuiSortDirection;
 typedef int ImGuiStyleVar;
-typedef int ImDrawCornerFlags;
+typedef int ImGuiTableBgTarget;
+typedef int ImDrawFlags;
 typedef int ImDrawListFlags;
 typedef int ImFontAtlasFlags;
 typedef int ImGuiBackendFlags;
+typedef int ImGuiButtonFlags;
 typedef int ImGuiColorEditFlags;
 typedef int ImGuiConfigFlags;
 typedef int ImGuiComboFlags;
@@ -118,16 +152,23 @@ typedef int ImGuiFocusedFlags;
 typedef int ImGuiHoveredFlags;
 typedef int ImGuiInputTextFlags;
 typedef int ImGuiKeyModFlags;
+typedef int ImGuiPopupFlags;
 typedef int ImGuiSelectableFlags;
+typedef int ImGuiSliderFlags;
 typedef int ImGuiTabBarFlags;
 typedef int ImGuiTabItemFlags;
+typedef int ImGuiTableFlags;
+typedef int ImGuiTableColumnFlags;
+typedef int ImGuiTableRowFlags;
 typedef int ImGuiTreeNodeFlags;
 typedef int ImGuiViewportFlags;
 typedef int ImGuiWindowFlags;
 typedef void* ImTextureID;
 typedef unsigned int ImGuiID;
-typedef int (*ImGuiInputTextCallback)(ImGuiInputTextCallbackData *data);
+typedef int (*ImGuiInputTextCallback)(ImGuiInputTextCallbackData* data);
 typedef void (*ImGuiSizeCallback)(ImGuiSizeCallbackData* data);
+typedef void* (*ImGuiMemAllocFunc)(size_t sz, void* user_data);
+typedef void (*ImGuiMemFreeFunc)(void* ptr, void* user_data);
 typedef unsigned short ImWchar16;
 typedef unsigned int ImWchar32;
 typedef ImWchar16 ImWchar;
@@ -146,122 +187,105 @@ struct ImRect;
 struct ImDrawDataBuilder;
 struct ImDrawListSharedData;
 struct ImGuiColorMod;
-struct ImGuiColumnData;
-struct ImGuiColumns;
 struct ImGuiContext;
+struct ImGuiContextHook;
 struct ImGuiDataTypeInfo;
 struct ImGuiDockContext;
+struct ImGuiDockRequest;
 struct ImGuiDockNode;
 struct ImGuiDockNodeSettings;
 struct ImGuiGroupData;
 struct ImGuiInputTextState;
-struct ImGuiItemHoveredDataBackup;
+struct ImGuiLastItemDataBackup;
 struct ImGuiMenuColumns;
 struct ImGuiNavMoveResult;
+struct ImGuiMetricsConfig;
 struct ImGuiNextWindowData;
 struct ImGuiNextItemData;
+struct ImGuiOldColumnData;
+struct ImGuiOldColumns;
 struct ImGuiPopupData;
 struct ImGuiSettingsHandler;
+struct ImGuiStackSizes;
 struct ImGuiStyleMod;
 struct ImGuiTabBar;
 struct ImGuiTabItem;
+struct ImGuiTable;
+struct ImGuiTableColumn;
+struct ImGuiTableSettings;
+struct ImGuiTableColumnsSettings;
 struct ImGuiWindow;
 struct ImGuiWindowTempData;
 struct ImGuiWindowSettings;
 typedef int ImGuiDataAuthority;
 typedef int ImGuiLayoutType;
-typedef int ImGuiButtonFlags;
-typedef int ImGuiColumnsFlags;
-typedef int ImGuiDragFlags;
 typedef int ImGuiItemFlags;
 typedef int ImGuiItemStatusFlags;
+typedef int ImGuiOldColumnFlags;
 typedef int ImGuiNavHighlightFlags;
 typedef int ImGuiNavDirSourceFlags;
 typedef int ImGuiNavMoveFlags;
 typedef int ImGuiNextItemDataFlags;
 typedef int ImGuiNextWindowDataFlags;
 typedef int ImGuiSeparatorFlags;
-typedef int ImGuiSliderFlags;
 typedef int ImGuiTextFlags;
 typedef int ImGuiTooltipFlags;
+typedef void (*ImGuiErrorLogCallback)(void* user_data, const char* fmt, ...);
 extern ImGuiContext* GImGui;
 typedef FILE* ImFileHandle;
 typedef int ImPoolIdx;
+typedef void (*ImGuiContextHookCallback)(ImGuiContext* ctx, ImGuiContextHook* hook);
+typedef ImS8 ImGuiTableColumnIdx;
+typedef ImU8 ImGuiTableDrawChannelIdx;
 typedef struct ImVector{int Size;int Capacity;void* Data;} ImVector;
-typedef struct ImVector_float {int Size;int Capacity;float* Data;} ImVector_float;
-typedef struct ImVector_ImWchar {int Size;int Capacity;ImWchar* Data;} ImVector_ImWchar;
-typedef struct ImVector_ImDrawVert {int Size;int Capacity;ImDrawVert* Data;} ImVector_ImDrawVert;
-typedef struct ImVector_ImGuiSettingsHandler {int Size;int Capacity;ImGuiSettingsHandler* Data;} ImVector_ImGuiSettingsHandler;
-typedef struct ImVector_ImGuiPlatformMonitor {int Size;int Capacity;ImGuiPlatformMonitor* Data;} ImVector_ImGuiPlatformMonitor;
-typedef struct ImVector_ImVec4 {int Size;int Capacity;ImVec4* Data;} ImVector_ImVec4;
-typedef struct ImVector_char {int Size;int Capacity;char* Data;} ImVector_char;
-typedef struct ImVector_const_charPtr {int Size;int Capacity;const char** Data;} ImVector_const_charPtr;
-typedef struct ImVector_ImGuiID {int Size;int Capacity;ImGuiID* Data;} ImVector_ImGuiID;
-typedef struct ImVector_ImGuiWindowPtr {int Size;int Capacity;ImGuiWindow** Data;} ImVector_ImGuiWindowPtr;
-typedef struct ImVector_ImGuiColumnData {int Size;int Capacity;ImGuiColumnData* Data;} ImVector_ImGuiColumnData;
-typedef struct ImVector_ImGuiViewportPtr {int Size;int Capacity;ImGuiViewport** Data;} ImVector_ImGuiViewportPtr;
-typedef struct ImVector_ImGuiColorMod {int Size;int Capacity;ImGuiColorMod* Data;} ImVector_ImGuiColorMod;
-typedef struct ImVector_ImVec2 {int Size;int Capacity;ImVec2* Data;} ImVector_ImVec2;
-typedef struct ImVector_ImFontGlyph {int Size;int Capacity;ImFontGlyph* Data;} ImVector_ImFontGlyph;
-typedef struct ImVector_ImGuiTextRange {int Size;int Capacity;ImGuiTextRange* Data;} ImVector_ImGuiTextRange;
-typedef struct ImVector_ImGuiStoragePair {int Size;int Capacity;ImGuiStoragePair* Data;} ImVector_ImGuiStoragePair;
-typedef struct ImVector_ImGuiStyleMod {int Size;int Capacity;ImGuiStyleMod* Data;} ImVector_ImGuiStyleMod;
-typedef struct ImVector_ImGuiViewportPPtr {int Size;int Capacity;ImGuiViewportP** Data;} ImVector_ImGuiViewportPPtr;
-typedef struct ImVector_ImDrawChannel {int Size;int Capacity;ImDrawChannel* Data;} ImVector_ImDrawChannel;
-typedef struct ImVector_ImDrawListPtr {int Size;int Capacity;ImDrawList** Data;} ImVector_ImDrawListPtr;
-typedef struct ImVector_ImU32 {int Size;int Capacity;ImU32* Data;} ImVector_ImU32;
-typedef struct ImVector_ImGuiItemFlags {int Size;int Capacity;ImGuiItemFlags* Data;} ImVector_ImGuiItemFlags;
-typedef struct ImVector_ImFontAtlasCustomRect {int Size;int Capacity;ImFontAtlasCustomRect* Data;} ImVector_ImFontAtlasCustomRect;
-typedef struct ImVector_ImGuiTabItem {int Size;int Capacity;ImGuiTabItem* Data;} ImVector_ImGuiTabItem;
-typedef struct ImVector_ImGuiColumns {int Size;int Capacity;ImGuiColumns* Data;} ImVector_ImGuiColumns;
-typedef struct ImVector_ImGuiShrinkWidthItem {int Size;int Capacity;ImGuiShrinkWidthItem* Data;} ImVector_ImGuiShrinkWidthItem;
-typedef struct ImVector_ImGuiGroupData {int Size;int Capacity;ImGuiGroupData* Data;} ImVector_ImGuiGroupData;
-typedef struct ImVector_ImGuiPopupData {int Size;int Capacity;ImGuiPopupData* Data;} ImVector_ImGuiPopupData;
-typedef struct ImVector_ImDrawCmd {int Size;int Capacity;ImDrawCmd* Data;} ImVector_ImDrawCmd;
-typedef struct ImVector_ImFontConfig {int Size;int Capacity;ImFontConfig* Data;} ImVector_ImFontConfig;
-typedef struct ImVector_ImFontPtr {int Size;int Capacity;ImFont** Data;} ImVector_ImFontPtr;
-typedef struct ImVector_ImGuiPtrOrIndex {int Size;int Capacity;ImGuiPtrOrIndex* Data;} ImVector_ImGuiPtrOrIndex;
-typedef struct ImVector_ImTextureID {int Size;int Capacity;ImTextureID* Data;} ImVector_ImTextureID;
-typedef struct ImVector_ImDrawIdx {int Size;int Capacity;ImDrawIdx* Data;} ImVector_ImDrawIdx;
-typedef struct ImVector_unsigned_char {int Size;int Capacity;unsigned char* Data;} ImVector_unsigned_char;
+typedef struct ImVector_ImGuiTableSettings {int Size;int Capacity;ImGuiTableSettings* Data;} ImVector_ImGuiTableSettings;
+typedef struct ImChunkStream_ImGuiTableSettings {ImVector_ImGuiTableSettings Buf;} ImChunkStream_ImGuiTableSettings;
 typedef struct ImVector_ImGuiWindowSettings {int Size;int Capacity;ImGuiWindowSettings* Data;} ImVector_ImGuiWindowSettings;
 typedef struct ImChunkStream_ImGuiWindowSettings {ImVector_ImGuiWindowSettings Buf;} ImChunkStream_ImGuiWindowSettings;
+typedef struct ImSpan_ImGuiTableCellData {ImGuiTableCellData* Data;ImGuiTableCellData* DataEnd;} ImSpan_ImGuiTableCellData;
+typedef struct ImSpan_ImGuiTableColumn {ImGuiTableColumn* Data;ImGuiTableColumn* DataEnd;} ImSpan_ImGuiTableColumn;
+typedef struct ImSpan_ImGuiTableColumnIdx {ImGuiTableColumnIdx* Data;ImGuiTableColumnIdx* DataEnd;} ImSpan_ImGuiTableColumnIdx;
+typedef struct ImVector_ImDrawChannel {int Size;int Capacity;ImDrawChannel* Data;} ImVector_ImDrawChannel;
+typedef struct ImVector_ImDrawCmd {int Size;int Capacity;ImDrawCmd* Data;} ImVector_ImDrawCmd;
+typedef struct ImVector_ImDrawIdx {int Size;int Capacity;ImDrawIdx* Data;} ImVector_ImDrawIdx;
+typedef struct ImVector_ImDrawListPtr {int Size;int Capacity;ImDrawList** Data;} ImVector_ImDrawListPtr;
+typedef struct ImVector_ImDrawVert {int Size;int Capacity;ImDrawVert* Data;} ImVector_ImDrawVert;
+typedef struct ImVector_ImFontPtr {int Size;int Capacity;ImFont** Data;} ImVector_ImFontPtr;
+typedef struct ImVector_ImFontAtlasCustomRect {int Size;int Capacity;ImFontAtlasCustomRect* Data;} ImVector_ImFontAtlasCustomRect;
+typedef struct ImVector_ImFontConfig {int Size;int Capacity;ImFontConfig* Data;} ImVector_ImFontConfig;
+typedef struct ImVector_ImFontGlyph {int Size;int Capacity;ImFontGlyph* Data;} ImVector_ImFontGlyph;
+typedef struct ImVector_ImGuiColorMod {int Size;int Capacity;ImGuiColorMod* Data;} ImVector_ImGuiColorMod;
+typedef struct ImVector_ImGuiContextHook {int Size;int Capacity;ImGuiContextHook* Data;} ImVector_ImGuiContextHook;
+typedef struct ImVector_ImGuiDockNodeSettings {int Size;int Capacity;ImGuiDockNodeSettings* Data;} ImVector_ImGuiDockNodeSettings;
+typedef struct ImVector_ImGuiDockRequest {int Size;int Capacity;ImGuiDockRequest* Data;} ImVector_ImGuiDockRequest;
+typedef struct ImVector_ImGuiGroupData {int Size;int Capacity;ImGuiGroupData* Data;} ImVector_ImGuiGroupData;
+typedef struct ImVector_ImGuiID {int Size;int Capacity;ImGuiID* Data;} ImVector_ImGuiID;
+typedef struct ImVector_ImGuiItemFlags {int Size;int Capacity;ImGuiItemFlags* Data;} ImVector_ImGuiItemFlags;
+typedef struct ImVector_ImGuiOldColumnData {int Size;int Capacity;ImGuiOldColumnData* Data;} ImVector_ImGuiOldColumnData;
+typedef struct ImVector_ImGuiOldColumns {int Size;int Capacity;ImGuiOldColumns* Data;} ImVector_ImGuiOldColumns;
+typedef struct ImVector_ImGuiPlatformMonitor {int Size;int Capacity;ImGuiPlatformMonitor* Data;} ImVector_ImGuiPlatformMonitor;
+typedef struct ImVector_ImGuiPopupData {int Size;int Capacity;ImGuiPopupData* Data;} ImVector_ImGuiPopupData;
+typedef struct ImVector_ImGuiPtrOrIndex {int Size;int Capacity;ImGuiPtrOrIndex* Data;} ImVector_ImGuiPtrOrIndex;
+typedef struct ImVector_ImGuiSettingsHandler {int Size;int Capacity;ImGuiSettingsHandler* Data;} ImVector_ImGuiSettingsHandler;
+typedef struct ImVector_ImGuiShrinkWidthItem {int Size;int Capacity;ImGuiShrinkWidthItem* Data;} ImVector_ImGuiShrinkWidthItem;
+typedef struct ImVector_ImGuiStoragePair {int Size;int Capacity;ImGuiStoragePair* Data;} ImVector_ImGuiStoragePair;
+typedef struct ImVector_ImGuiStyleMod {int Size;int Capacity;ImGuiStyleMod* Data;} ImVector_ImGuiStyleMod;
+typedef struct ImVector_ImGuiTabItem {int Size;int Capacity;ImGuiTabItem* Data;} ImVector_ImGuiTabItem;
+typedef struct ImVector_ImGuiTableColumnSortSpecs {int Size;int Capacity;ImGuiTableColumnSortSpecs* Data;} ImVector_ImGuiTableColumnSortSpecs;
+typedef struct ImVector_ImGuiTextRange {int Size;int Capacity;ImGuiTextRange* Data;} ImVector_ImGuiTextRange;
+typedef struct ImVector_ImGuiViewportPtr {int Size;int Capacity;ImGuiViewport** Data;} ImVector_ImGuiViewportPtr;
+typedef struct ImVector_ImGuiViewportPPtr {int Size;int Capacity;ImGuiViewportP** Data;} ImVector_ImGuiViewportPPtr;
+typedef struct ImVector_ImGuiWindowPtr {int Size;int Capacity;ImGuiWindow** Data;} ImVector_ImGuiWindowPtr;
+typedef struct ImVector_ImTextureID {int Size;int Capacity;ImTextureID* Data;} ImVector_ImTextureID;
+typedef struct ImVector_ImU32 {int Size;int Capacity;ImU32* Data;} ImVector_ImU32;
+typedef struct ImVector_ImVec2 {int Size;int Capacity;ImVec2* Data;} ImVector_ImVec2;
+typedef struct ImVector_ImVec4 {int Size;int Capacity;ImVec4* Data;} ImVector_ImVec4;
+typedef struct ImVector_ImWchar {int Size;int Capacity;ImWchar* Data;} ImVector_ImWchar;
+typedef struct ImVector_char {int Size;int Capacity;char* Data;} ImVector_char;
+typedef struct ImVector_const_charPtr {int Size;int Capacity;const char** Data;} ImVector_const_charPtr;
+typedef struct ImVector_float {int Size;int Capacity;float* Data;} ImVector_float;
+typedef struct ImVector_unsigned_char {int Size;int Capacity;unsigned char* Data;} ImVector_unsigned_char;
 
-typedef struct
-{
-   int where;
-   int insert_length;
-   int delete_length;
-   int char_storage;
-} StbUndoRecord;
-typedef struct
-{
-   StbUndoRecord undo_rec [99];
-   ImWchar undo_char[999];
-   short undo_point, redo_point;
-   int undo_char_point, redo_char_point;
-} StbUndoState;
-typedef struct
-{
-   int cursor;
-   int select_start;
-   int select_end;
-   unsigned char insert_mode;
-   unsigned char cursor_at_end_of_line;
-   unsigned char initialized;
-   unsigned char has_preferred_x;
-   unsigned char single_line;
-   unsigned char padding1, padding2, padding3;
-   float preferred_x;
-   StbUndoState undostate;
-} STB_TexteditState;
-typedef struct
-{
-   float x0,x1;
-   float baseline_y_delta;
-   float ymin,ymax;
-   int num_chars;
-} StbTexteditRow;
 typedef enum {
     ImGuiWindowFlags_None = 0,
     ImGuiWindowFlags_NoTitleBar = 1 << 0,
@@ -311,12 +335,13 @@ typedef enum {
     ImGuiInputTextFlags_AllowTabInput = 1 << 10,
     ImGuiInputTextFlags_CtrlEnterForNewLine = 1 << 11,
     ImGuiInputTextFlags_NoHorizontalScroll = 1 << 12,
-    ImGuiInputTextFlags_AlwaysInsertMode = 1 << 13,
+    ImGuiInputTextFlags_AlwaysOverwrite = 1 << 13,
     ImGuiInputTextFlags_ReadOnly = 1 << 14,
     ImGuiInputTextFlags_Password = 1 << 15,
     ImGuiInputTextFlags_NoUndoRedo = 1 << 16,
     ImGuiInputTextFlags_CharsScientific = 1 << 17,
     ImGuiInputTextFlags_CallbackResize = 1 << 18,
+    ImGuiInputTextFlags_CallbackEdit = 1 << 19,
     ImGuiInputTextFlags_Multiline = 1 << 20,
     ImGuiInputTextFlags_NoMarkEdited = 1 << 21
 }ImGuiInputTextFlags_;
@@ -338,6 +363,19 @@ typedef enum {
     ImGuiTreeNodeFlags_NavLeftJumpsBackHere = 1 << 13,
     ImGuiTreeNodeFlags_CollapsingHeader = ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_NoAutoOpenOnLog
 }ImGuiTreeNodeFlags_;
+typedef enum {
+    ImGuiPopupFlags_None = 0,
+    ImGuiPopupFlags_MouseButtonLeft = 0,
+    ImGuiPopupFlags_MouseButtonRight = 1,
+    ImGuiPopupFlags_MouseButtonMiddle = 2,
+    ImGuiPopupFlags_MouseButtonMask_ = 0x1F,
+    ImGuiPopupFlags_MouseButtonDefault_ = 1,
+    ImGuiPopupFlags_NoOpenOverExistingPopup = 1 << 5,
+    ImGuiPopupFlags_NoOpenOverItems = 1 << 6,
+    ImGuiPopupFlags_AnyPopupId = 1 << 7,
+    ImGuiPopupFlags_AnyPopupLevel = 1 << 8,
+    ImGuiPopupFlags_AnyPopup = ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel
+}ImGuiPopupFlags_;
 typedef enum {
     ImGuiSelectableFlags_None = 0,
     ImGuiSelectableFlags_DontClosePopups = 1 << 0,
@@ -375,8 +413,87 @@ typedef enum {
     ImGuiTabItemFlags_UnsavedDocument = 1 << 0,
     ImGuiTabItemFlags_SetSelected = 1 << 1,
     ImGuiTabItemFlags_NoCloseWithMiddleMouseButton = 1 << 2,
-    ImGuiTabItemFlags_NoPushId = 1 << 3
+    ImGuiTabItemFlags_NoPushId = 1 << 3,
+    ImGuiTabItemFlags_NoTooltip = 1 << 4,
+    ImGuiTabItemFlags_NoReorder = 1 << 5,
+    ImGuiTabItemFlags_Leading = 1 << 6,
+    ImGuiTabItemFlags_Trailing = 1 << 7
 }ImGuiTabItemFlags_;
+typedef enum {
+    ImGuiTableFlags_None = 0,
+    ImGuiTableFlags_Resizable = 1 << 0,
+    ImGuiTableFlags_Reorderable = 1 << 1,
+    ImGuiTableFlags_Hideable = 1 << 2,
+    ImGuiTableFlags_Sortable = 1 << 3,
+    ImGuiTableFlags_NoSavedSettings = 1 << 4,
+    ImGuiTableFlags_ContextMenuInBody = 1 << 5,
+    ImGuiTableFlags_RowBg = 1 << 6,
+    ImGuiTableFlags_BordersInnerH = 1 << 7,
+    ImGuiTableFlags_BordersOuterH = 1 << 8,
+    ImGuiTableFlags_BordersInnerV = 1 << 9,
+    ImGuiTableFlags_BordersOuterV = 1 << 10,
+    ImGuiTableFlags_BordersH = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_BordersOuterH,
+    ImGuiTableFlags_BordersV = ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersOuterV,
+    ImGuiTableFlags_BordersInner = ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersInnerH,
+    ImGuiTableFlags_BordersOuter = ImGuiTableFlags_BordersOuterV | ImGuiTableFlags_BordersOuterH,
+    ImGuiTableFlags_Borders = ImGuiTableFlags_BordersInner | ImGuiTableFlags_BordersOuter,
+    ImGuiTableFlags_NoBordersInBody = 1 << 11,
+    ImGuiTableFlags_NoBordersInBodyUntilResize = 1 << 12,
+    ImGuiTableFlags_SizingFixedFit = 1 << 13,
+    ImGuiTableFlags_SizingFixedSame = 2 << 13,
+    ImGuiTableFlags_SizingStretchProp = 3 << 13,
+    ImGuiTableFlags_SizingStretchSame = 4 << 13,
+    ImGuiTableFlags_NoHostExtendX = 1 << 16,
+    ImGuiTableFlags_NoHostExtendY = 1 << 17,
+    ImGuiTableFlags_NoKeepColumnsVisible = 1 << 18,
+    ImGuiTableFlags_PreciseWidths = 1 << 19,
+    ImGuiTableFlags_NoClip = 1 << 20,
+    ImGuiTableFlags_PadOuterX = 1 << 21,
+    ImGuiTableFlags_NoPadOuterX = 1 << 22,
+    ImGuiTableFlags_NoPadInnerX = 1 << 23,
+    ImGuiTableFlags_ScrollX = 1 << 24,
+    ImGuiTableFlags_ScrollY = 1 << 25,
+    ImGuiTableFlags_SortMulti = 1 << 26,
+    ImGuiTableFlags_SortTristate = 1 << 27,
+    ImGuiTableFlags_SizingMask_ = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_SizingFixedSame | ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_SizingStretchSame
+}ImGuiTableFlags_;
+typedef enum {
+    ImGuiTableColumnFlags_None = 0,
+    ImGuiTableColumnFlags_DefaultHide = 1 << 0,
+    ImGuiTableColumnFlags_DefaultSort = 1 << 1,
+    ImGuiTableColumnFlags_WidthStretch = 1 << 2,
+    ImGuiTableColumnFlags_WidthFixed = 1 << 3,
+    ImGuiTableColumnFlags_NoResize = 1 << 4,
+    ImGuiTableColumnFlags_NoReorder = 1 << 5,
+    ImGuiTableColumnFlags_NoHide = 1 << 6,
+    ImGuiTableColumnFlags_NoClip = 1 << 7,
+    ImGuiTableColumnFlags_NoSort = 1 << 8,
+    ImGuiTableColumnFlags_NoSortAscending = 1 << 9,
+    ImGuiTableColumnFlags_NoSortDescending = 1 << 10,
+    ImGuiTableColumnFlags_NoHeaderWidth = 1 << 11,
+    ImGuiTableColumnFlags_PreferSortAscending = 1 << 12,
+    ImGuiTableColumnFlags_PreferSortDescending = 1 << 13,
+    ImGuiTableColumnFlags_IndentEnable = 1 << 14,
+    ImGuiTableColumnFlags_IndentDisable = 1 << 15,
+    ImGuiTableColumnFlags_IsEnabled = 1 << 20,
+    ImGuiTableColumnFlags_IsVisible = 1 << 21,
+    ImGuiTableColumnFlags_IsSorted = 1 << 22,
+    ImGuiTableColumnFlags_IsHovered = 1 << 23,
+    ImGuiTableColumnFlags_WidthMask_ = ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_WidthFixed,
+    ImGuiTableColumnFlags_IndentMask_ = ImGuiTableColumnFlags_IndentEnable | ImGuiTableColumnFlags_IndentDisable,
+    ImGuiTableColumnFlags_StatusMask_ = ImGuiTableColumnFlags_IsEnabled | ImGuiTableColumnFlags_IsVisible | ImGuiTableColumnFlags_IsSorted | ImGuiTableColumnFlags_IsHovered,
+    ImGuiTableColumnFlags_NoDirectResize_ = 1 << 30
+}ImGuiTableColumnFlags_;
+typedef enum {
+    ImGuiTableRowFlags_None = 0,
+    ImGuiTableRowFlags_Headers = 1 << 0
+}ImGuiTableRowFlags_;
+typedef enum {
+    ImGuiTableBgTarget_None = 0,
+    ImGuiTableBgTarget_RowBg0 = 1,
+    ImGuiTableBgTarget_RowBg1 = 2,
+    ImGuiTableBgTarget_CellBg = 3
+}ImGuiTableBgTarget_;
 typedef enum {
     ImGuiFocusedFlags_None = 0,
     ImGuiFocusedFlags_ChildWindows = 1 << 0,
@@ -439,6 +556,11 @@ typedef enum {
     ImGuiDir_Down = 3,
     ImGuiDir_COUNT
 }ImGuiDir_;
+typedef enum {
+    ImGuiSortDirection_None = 0,
+    ImGuiSortDirection_Ascending = 1,
+    ImGuiSortDirection_Descending = 2
+}ImGuiSortDirection_;
 typedef enum {
     ImGuiKey_Tab,
     ImGuiKey_LeftArrow,
@@ -566,6 +688,11 @@ typedef enum {
     ImGuiCol_PlotLinesHovered,
     ImGuiCol_PlotHistogram,
     ImGuiCol_PlotHistogramHovered,
+    ImGuiCol_TableHeaderBg,
+    ImGuiCol_TableBorderStrong,
+    ImGuiCol_TableBorderLight,
+    ImGuiCol_TableRowBg,
+    ImGuiCol_TableRowBgAlt,
     ImGuiCol_TextSelectedBg,
     ImGuiCol_DragDropTarget,
     ImGuiCol_NavHighlight,
@@ -591,6 +718,7 @@ typedef enum {
     ImGuiStyleVar_ItemSpacing,
     ImGuiStyleVar_ItemInnerSpacing,
     ImGuiStyleVar_IndentSpacing,
+    ImGuiStyleVar_CellPadding,
     ImGuiStyleVar_ScrollbarSize,
     ImGuiStyleVar_ScrollbarRounding,
     ImGuiStyleVar_GrabMinSize,
@@ -600,6 +728,14 @@ typedef enum {
     ImGuiStyleVar_SelectableTextAlign,
     ImGuiStyleVar_COUNT
 }ImGuiStyleVar_;
+typedef enum {
+    ImGuiButtonFlags_None = 0,
+    ImGuiButtonFlags_MouseButtonLeft = 1 << 0,
+    ImGuiButtonFlags_MouseButtonRight = 1 << 1,
+    ImGuiButtonFlags_MouseButtonMiddle = 1 << 2,
+    ImGuiButtonFlags_MouseButtonMask_ = ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle,
+    ImGuiButtonFlags_MouseButtonDefault_ = ImGuiButtonFlags_MouseButtonLeft
+}ImGuiButtonFlags_;
 typedef enum {
     ImGuiColorEditFlags_None = 0,
     ImGuiColorEditFlags_NoAlpha = 1 << 1,
@@ -625,12 +761,20 @@ typedef enum {
     ImGuiColorEditFlags_PickerHueWheel = 1 << 26,
     ImGuiColorEditFlags_InputRGB = 1 << 27,
     ImGuiColorEditFlags_InputHSV = 1 << 28,
-    ImGuiColorEditFlags__OptionsDefault = ImGuiColorEditFlags_Uint8|ImGuiColorEditFlags_DisplayRGB|ImGuiColorEditFlags_InputRGB|ImGuiColorEditFlags_PickerHueBar,
-    ImGuiColorEditFlags__DisplayMask = ImGuiColorEditFlags_DisplayRGB|ImGuiColorEditFlags_DisplayHSV|ImGuiColorEditFlags_DisplayHex,
-    ImGuiColorEditFlags__DataTypeMask = ImGuiColorEditFlags_Uint8|ImGuiColorEditFlags_Float,
-    ImGuiColorEditFlags__PickerMask = ImGuiColorEditFlags_PickerHueWheel|ImGuiColorEditFlags_PickerHueBar,
-    ImGuiColorEditFlags__InputMask = ImGuiColorEditFlags_InputRGB|ImGuiColorEditFlags_InputHSV
+    ImGuiColorEditFlags__OptionsDefault = ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_PickerHueBar,
+    ImGuiColorEditFlags__DisplayMask = ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_DisplayHSV | ImGuiColorEditFlags_DisplayHex,
+    ImGuiColorEditFlags__DataTypeMask = ImGuiColorEditFlags_Uint8 | ImGuiColorEditFlags_Float,
+    ImGuiColorEditFlags__PickerMask = ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_PickerHueBar,
+    ImGuiColorEditFlags__InputMask = ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_InputHSV
 }ImGuiColorEditFlags_;
+typedef enum {
+    ImGuiSliderFlags_None = 0,
+    ImGuiSliderFlags_AlwaysClamp = 1 << 4,
+    ImGuiSliderFlags_Logarithmic = 1 << 5,
+    ImGuiSliderFlags_NoRoundToFormat = 1 << 6,
+    ImGuiSliderFlags_NoInput = 1 << 7,
+    ImGuiSliderFlags_InvalidMask_ = 0x7000000F
+}ImGuiSliderFlags_;
 typedef enum {
     ImGuiMouseButton_Left = 0,
     ImGuiMouseButton_Right = 1,
@@ -651,6 +795,7 @@ typedef enum {
     ImGuiMouseCursor_COUNT
 }ImGuiMouseCursor_;
 typedef enum {
+    ImGuiCond_None = 0,
     ImGuiCond_Always = 1 << 0,
     ImGuiCond_Once = 1 << 1,
     ImGuiCond_FirstUseEver = 1 << 2,
@@ -674,6 +819,7 @@ struct ImGuiStyle
     float FrameBorderSize;
     ImVec2 ItemSpacing;
     ImVec2 ItemInnerSpacing;
+    ImVec2 CellPadding;
     ImVec2 TouchExtraPadding;
     float IndentSpacing;
     float ColumnsMinSpacing;
@@ -681,8 +827,10 @@ struct ImGuiStyle
     float ScrollbarRounding;
     float GrabMinSize;
     float GrabRounding;
+    float LogSliderDeadzone;
     float TabRounding;
     float TabBorderSize;
+    float TabMinWidthForCloseButton;
     ImGuiDir ColorButtonPosition;
     ImVec2 ButtonTextAlign;
     ImVec2 SelectableTextAlign;
@@ -690,9 +838,10 @@ struct ImGuiStyle
     ImVec2 DisplaySafeAreaPadding;
     float MouseCursorScale;
     bool AntiAliasedLines;
+    bool AntiAliasedLinesUseTex;
     bool AntiAliasedFill;
     float CurveTessellationTol;
-    float CircleSegmentMaxError;
+    float CircleTessellationMaxError;
     ImVec4 Colors[ImGuiCol_COUNT];
 };
 struct ImGuiIO
@@ -727,9 +876,10 @@ struct ImGuiIO
     bool MouseDrawCursor;
     bool ConfigMacOSXBehaviors;
     bool ConfigInputTextCursorBlink;
+    bool ConfigDragClickToInputText;
     bool ConfigWindowsResizeFromEdges;
     bool ConfigWindowsMoveFromTitleBarOnly;
-    float ConfigWindowsMemoryCompactTimer;
+    float ConfigMemoryCompactTimer;
     const char* BackendPlatformName;
     const char* BackendRendererName;
     void* BackendPlatformUserData;
@@ -738,7 +888,6 @@ struct ImGuiIO
     const char* (*GetClipboardTextFn)(void* user_data);
     void (*SetClipboardTextFn)(void* user_data, const char* text);
     void* ClipboardUserData;
-    void* RenderDrawListsFnUnused;
     ImVec2 MousePos;
     bool MouseDown[5];
     float MouseWheel;
@@ -781,6 +930,7 @@ struct ImGuiIO
     float KeysDownDurationPrev[512];
     float NavInputsDownDuration[ImGuiNavInput_COUNT];
     float NavInputsDownDurationPrev[ImGuiNavInput_COUNT];
+    float PenPressure;
     ImWchar16 InputQueueSurrogate;
     ImVector_ImWchar InputQueueCharacters;
 };
@@ -812,6 +962,7 @@ struct ImGuiWindowClass
     ImGuiID ParentViewportId;
     ImGuiViewportFlags ViewportFlagsOverrideSet;
     ImGuiViewportFlags ViewportFlagsOverrideClear;
+    ImGuiTabItemFlags TabItemFlagsOverrideSet;
     ImGuiDockNodeFlags DockNodeFlagsOverrideSet;
     ImGuiDockNodeFlags DockNodeFlagsOverrideClear;
     bool DockingAlwaysTabBar;
@@ -824,13 +975,31 @@ struct ImGuiPayload
     ImGuiID SourceId;
     ImGuiID SourceParentId;
     int DataFrameCount;
-    char DataType[32+1];
+    char DataType[32 + 1];
     bool Preview;
     bool Delivery;
+};
+struct ImGuiTableColumnSortSpecs
+{
+    ImGuiID ColumnUserID;
+    ImS16 ColumnIndex;
+    ImS16 SortOrder;
+    ImGuiSortDirection SortDirection : 8;
+};
+struct ImGuiTableSortSpecs
+{
+    const ImGuiTableColumnSortSpecs* Specs;
+    int SpecsCount;
+    bool SpecsDirty;
 };
 struct ImGuiOnceUponAFrame
 {
      int RefFrame;
+};
+struct ImGuiTextRange
+{
+        const char* b;
+        const char* e;
 };
 struct ImGuiTextFilter
 {
@@ -842,17 +1011,26 @@ struct ImGuiTextBuffer
 {
     ImVector_char Buf;
 };
+struct ImGuiStoragePair
+{
+        ImGuiID key;
+        union { int val_i; float val_f; void* val_p; };
+};
 struct ImGuiStorage
 {
     ImVector_ImGuiStoragePair Data;
 };
 typedef struct ImVector_ImGuiTabBar {int Size;int Capacity;ImGuiTabBar* Data;} ImVector_ImGuiTabBar;
 typedef struct ImPool_ImGuiTabBar {ImVector_ImGuiTabBar Buf;ImGuiStorage Map;ImPoolIdx FreeIdx;} ImPool_ImGuiTabBar;
+typedef struct ImVector_ImGuiTable {int Size;int Capacity;ImGuiTable* Data;} ImVector_ImGuiTable;
+typedef struct ImPool_ImGuiTable {ImVector_ImGuiTable Buf;ImGuiStorage Map;ImPoolIdx FreeIdx;} ImPool_ImGuiTable;
 struct ImGuiListClipper
 {
-    int DisplayStart, DisplayEnd;
+    int DisplayStart;
+    int DisplayEnd;
     int ItemsCount;
     int StepNo;
+    int ItemsFrozen;
     float ItemsHeight;
     float StartPosY;
 };
@@ -862,11 +1040,11 @@ struct ImColor
 };
 struct ImDrawCmd
 {
-    unsigned int ElemCount;
     ImVec4 ClipRect;
     ImTextureID TextureId;
     unsigned int VtxOffset;
     unsigned int IdxOffset;
+    unsigned int ElemCount;
     ImDrawCallback UserCallback;
     void* UserCallbackData;
 };
@@ -875,6 +1053,12 @@ struct ImDrawVert
     ImVec2 pos;
     ImVec2 uv;
     ImU32 col;
+};
+struct ImDrawCmdHeader
+{
+    ImVec4 ClipRect;
+    ImTextureID TextureId;
+    unsigned int VtxOffset;
 };
 struct ImDrawChannel
 {
@@ -888,22 +1072,27 @@ struct ImDrawListSplitter
     ImVector_ImDrawChannel _Channels;
 };
 typedef enum {
-    ImDrawCornerFlags_None = 0,
-    ImDrawCornerFlags_TopLeft = 1 << 0,
-    ImDrawCornerFlags_TopRight = 1 << 1,
-    ImDrawCornerFlags_BotLeft = 1 << 2,
-    ImDrawCornerFlags_BotRight = 1 << 3,
-    ImDrawCornerFlags_Top = ImDrawCornerFlags_TopLeft | ImDrawCornerFlags_TopRight,
-    ImDrawCornerFlags_Bot = ImDrawCornerFlags_BotLeft | ImDrawCornerFlags_BotRight,
-    ImDrawCornerFlags_Left = ImDrawCornerFlags_TopLeft | ImDrawCornerFlags_BotLeft,
-    ImDrawCornerFlags_Right = ImDrawCornerFlags_TopRight | ImDrawCornerFlags_BotRight,
-    ImDrawCornerFlags_All = 0xF
-}ImDrawCornerFlags_;
+    ImDrawFlags_None = 0,
+    ImDrawFlags_Closed = 1 << 0,
+    ImDrawFlags_RoundCornersTopLeft = 1 << 4,
+    ImDrawFlags_RoundCornersTopRight = 1 << 5,
+    ImDrawFlags_RoundCornersBottomLeft = 1 << 6,
+    ImDrawFlags_RoundCornersBottomRight = 1 << 7,
+    ImDrawFlags_RoundCornersNone = 1 << 8,
+    ImDrawFlags_RoundCornersTop = ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersTopRight,
+    ImDrawFlags_RoundCornersBottom = ImDrawFlags_RoundCornersBottomLeft | ImDrawFlags_RoundCornersBottomRight,
+    ImDrawFlags_RoundCornersLeft = ImDrawFlags_RoundCornersBottomLeft | ImDrawFlags_RoundCornersTopLeft,
+    ImDrawFlags_RoundCornersRight = ImDrawFlags_RoundCornersBottomRight | ImDrawFlags_RoundCornersTopRight,
+    ImDrawFlags_RoundCornersAll = ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersTopRight | ImDrawFlags_RoundCornersBottomLeft | ImDrawFlags_RoundCornersBottomRight,
+    ImDrawFlags_RoundCornersDefault_ = ImDrawFlags_RoundCornersAll,
+    ImDrawFlags_RoundCornersMask_ = ImDrawFlags_RoundCornersAll | ImDrawFlags_RoundCornersNone
+}ImDrawFlags_;
 typedef enum {
     ImDrawListFlags_None = 0,
     ImDrawListFlags_AntiAliasedLines = 1 << 0,
-    ImDrawListFlags_AntiAliasedFill = 1 << 1,
-    ImDrawListFlags_AllowVtxOffset = 1 << 2
+    ImDrawListFlags_AntiAliasedLinesUseTex = 1 << 1,
+    ImDrawListFlags_AntiAliasedFill = 1 << 2,
+    ImDrawListFlags_AllowVtxOffset = 1 << 3
 }ImDrawListFlags_;
 struct ImDrawList
 {
@@ -911,24 +1100,25 @@ struct ImDrawList
     ImVector_ImDrawIdx IdxBuffer;
     ImVector_ImDrawVert VtxBuffer;
     ImDrawListFlags Flags;
+    unsigned int _VtxCurrentIdx;
     const ImDrawListSharedData* _Data;
     const char* _OwnerName;
-    unsigned int _VtxCurrentOffset;
-    unsigned int _VtxCurrentIdx;
     ImDrawVert* _VtxWritePtr;
     ImDrawIdx* _IdxWritePtr;
     ImVector_ImVec4 _ClipRectStack;
     ImVector_ImTextureID _TextureIdStack;
     ImVector_ImVec2 _Path;
+    ImDrawCmdHeader _CmdHeader;
     ImDrawListSplitter _Splitter;
+    float _FringeScale;
 };
 struct ImDrawData
 {
     bool Valid;
-    ImDrawList** CmdLists;
     int CmdListsCount;
     int TotalIdxCount;
     int TotalVtxCount;
+    ImDrawList** CmdLists;
     ImVec2 DisplayPos;
     ImVec2 DisplaySize;
     ImVec2 FramebufferScale;
@@ -950,7 +1140,7 @@ struct ImFontConfig
     float GlyphMinAdvanceX;
     float GlyphMaxAdvanceX;
     bool MergeMode;
-    unsigned int RasterizerFlags;
+    unsigned int FontBuilderFlags;
     float RasterizerMultiply;
     ImWchar EllipsisChar;
     char Name[40];
@@ -958,8 +1148,9 @@ struct ImFontConfig
 };
 struct ImFontGlyph
 {
-    unsigned int Codepoint : 31;
+    unsigned int Colored : 1;
     unsigned int Visible : 1;
+    unsigned int Codepoint : 30;
     float AdvanceX;
     float X0, Y0, X1, Y1;
     float U0, V0, U1, V1;
@@ -970,9 +1161,9 @@ struct ImFontGlyphRangesBuilder
 };
 struct ImFontAtlasCustomRect
 {
-    unsigned int ID;
     unsigned short Width, Height;
     unsigned short X, Y;
+    unsigned int GlyphID;
     float GlyphAdvanceX;
     ImVec2 GlyphOffset;
     ImFont* Font;
@@ -980,15 +1171,17 @@ struct ImFontAtlasCustomRect
 typedef enum {
     ImFontAtlasFlags_None = 0,
     ImFontAtlasFlags_NoPowerOfTwoHeight = 1 << 0,
-    ImFontAtlasFlags_NoMouseCursors = 1 << 1
+    ImFontAtlasFlags_NoMouseCursors = 1 << 1,
+    ImFontAtlasFlags_NoBakedLines = 1 << 2
 }ImFontAtlasFlags_;
 struct ImFontAtlas
 {
-    bool Locked;
     ImFontAtlasFlags Flags;
     ImTextureID TexID;
     int TexDesiredWidth;
     int TexGlyphPadding;
+    bool Locked;
+    bool TexPixelsUseColors;
     unsigned char* TexPixelsAlpha8;
     unsigned int* TexPixelsRGBA32;
     int TexWidth;
@@ -998,7 +1191,11 @@ struct ImFontAtlas
     ImVector_ImFontPtr Fonts;
     ImVector_ImFontAtlasCustomRect CustomRects;
     ImVector_ImFontConfig ConfigData;
-    int CustomRectIds[1];
+    ImVec4 TexUvLines[(63) + 1];
+    const ImFontBuilderIO* FontBuilderIO;
+    unsigned int FontBuilderFlags;
+    int PackIdMouseCursors;
+    int PackIdLines;
 };
 struct ImFont
 {
@@ -1008,7 +1205,6 @@ struct ImFont
     ImVector_ImWchar IndexLookup;
     ImVector_ImFontGlyph Glyphs;
     const ImFontGlyph* FallbackGlyph;
-    ImVec2 DisplayOffset;
     ImFontAtlas* ContainerAtlas;
     const ImFontConfig* ConfigData;
     short ConfigDataCount;
@@ -1019,6 +1215,41 @@ struct ImFont
     float Ascent, Descent;
     int MetricsTotalSurface;
     ImU8 Used4kPagesMap[(0xFFFF +1)/4096/8];
+};
+typedef enum {
+    ImGuiViewportFlags_None = 0,
+    ImGuiViewportFlags_IsPlatformWindow = 1 << 0,
+    ImGuiViewportFlags_IsPlatformMonitor = 1 << 1,
+    ImGuiViewportFlags_OwnedByApp = 1 << 2,
+    ImGuiViewportFlags_NoDecoration = 1 << 3,
+    ImGuiViewportFlags_NoTaskBarIcon = 1 << 4,
+    ImGuiViewportFlags_NoFocusOnAppearing = 1 << 5,
+    ImGuiViewportFlags_NoFocusOnClick = 1 << 6,
+    ImGuiViewportFlags_NoInputs = 1 << 7,
+    ImGuiViewportFlags_NoRendererClear = 1 << 8,
+    ImGuiViewportFlags_TopMost = 1 << 9,
+    ImGuiViewportFlags_Minimized = 1 << 10,
+    ImGuiViewportFlags_NoAutoMerge = 1 << 11,
+    ImGuiViewportFlags_CanHostOtherWindows = 1 << 12
+}ImGuiViewportFlags_;
+struct ImGuiViewport
+{
+    ImGuiID ID;
+    ImGuiViewportFlags Flags;
+    ImVec2 Pos;
+    ImVec2 Size;
+    ImVec2 WorkPos;
+    ImVec2 WorkSize;
+    float DpiScale;
+    ImGuiID ParentViewportId;
+    ImDrawData* DrawData;
+    void* RendererUserData;
+    void* PlatformUserData;
+    void* PlatformHandle;
+    void* PlatformHandleRaw;
+    bool PlatformRequestMove;
+    bool PlatformRequestResize;
+    bool PlatformRequestClose;
 };
 struct ImGuiPlatformIO
 {
@@ -1047,7 +1278,6 @@ struct ImGuiPlatformIO
     void (*Renderer_RenderWindow)(ImGuiViewport* vp, void* render_arg);
     void (*Renderer_SwapBuffers)(ImGuiViewport* vp, void* render_arg);
     ImVector_ImGuiPlatformMonitor Monitors;
-    ImGuiViewport* MainViewport;
     ImVector_ImGuiViewportPtr Viewports;
 };
 struct ImGuiPlatformMonitor
@@ -1056,102 +1286,77 @@ struct ImGuiPlatformMonitor
     ImVec2 WorkPos, WorkSize;
     float DpiScale;
 };
-typedef enum {
-    ImGuiViewportFlags_None = 0,
-    ImGuiViewportFlags_NoDecoration = 1 << 0,
-    ImGuiViewportFlags_NoTaskBarIcon = 1 << 1,
-    ImGuiViewportFlags_NoFocusOnAppearing = 1 << 2,
-    ImGuiViewportFlags_NoFocusOnClick = 1 << 3,
-    ImGuiViewportFlags_NoInputs = 1 << 4,
-    ImGuiViewportFlags_NoRendererClear = 1 << 5,
-    ImGuiViewportFlags_TopMost = 1 << 6,
-    ImGuiViewportFlags_Minimized = 1 << 7,
-    ImGuiViewportFlags_NoAutoMerge = 1 << 8,
-    ImGuiViewportFlags_CanHostOtherWindows = 1 << 9
-}ImGuiViewportFlags_;
-struct ImGuiViewport
+struct StbUndoRecord
 {
-    ImGuiID ID;
-    ImGuiViewportFlags Flags;
-    ImVec2 Pos;
-    ImVec2 Size;
-    ImVec2 WorkOffsetMin;
-    ImVec2 WorkOffsetMax;
-    float DpiScale;
-    ImDrawData* DrawData;
-    ImGuiID ParentViewportId;
-    void* RendererUserData;
-    void* PlatformUserData;
-    void* PlatformHandle;
-    void* PlatformHandleRaw;
-    bool PlatformRequestMove;
-    bool PlatformRequestResize;
-    bool PlatformRequestClose;
+   int where;
+   int insert_length;
+   int delete_length;
+   int char_storage;
+};
+struct StbUndoState
+{
+   StbUndoRecord undo_rec [99];
+   ImWchar undo_char[999];
+   short undo_point, redo_point;
+   int undo_char_point, redo_char_point;
+};
+struct STB_TexteditState
+{
+   int cursor;
+   int select_start;
+   int select_end;
+   unsigned char insert_mode;
+   int row_count_per_page;
+   unsigned char cursor_at_end_of_line;
+   unsigned char initialized;
+   unsigned char has_preferred_x;
+   unsigned char single_line;
+   unsigned char padding1, padding2, padding3;
+   float preferred_x;
+   StbUndoState undostate;
+};
+struct StbTexteditRow
+{
+   float x0,x1;
+   float baseline_y_delta;
+   float ymin,ymax;
+   int num_chars;
+};
+struct ImVec1
+{
+    float x;
+};
+struct ImVec2ih
+{
+    short x, y;
+};
+struct ImRect
+{
+    ImVec2 Min;
+    ImVec2 Max;
 };
 struct ImBitVector
 {
     ImVector_ImU32 Storage;
 };
-typedef enum {
-    ImGuiButtonFlags_None = 0,
-    ImGuiButtonFlags_Repeat = 1 << 0,
-    ImGuiButtonFlags_PressedOnClick = 1 << 1,
-    ImGuiButtonFlags_PressedOnClickRelease = 1 << 2,
-    ImGuiButtonFlags_PressedOnClickReleaseAnywhere = 1 << 3,
-    ImGuiButtonFlags_PressedOnRelease = 1 << 4,
-    ImGuiButtonFlags_PressedOnDoubleClick = 1 << 5,
-    ImGuiButtonFlags_PressedOnDragDropHold = 1 << 6,
-    ImGuiButtonFlags_FlattenChildren = 1 << 7,
-    ImGuiButtonFlags_AllowItemOverlap = 1 << 8,
-    ImGuiButtonFlags_DontClosePopups = 1 << 9,
-    ImGuiButtonFlags_Disabled = 1 << 10,
-    ImGuiButtonFlags_AlignTextBaseLine = 1 << 11,
-    ImGuiButtonFlags_NoKeyModifiers = 1 << 12,
-    ImGuiButtonFlags_NoHoldingActiveId = 1 << 13,
-    ImGuiButtonFlags_NoNavFocus = 1 << 14,
-    ImGuiButtonFlags_NoHoveredOnFocus = 1 << 15,
-    ImGuiButtonFlags_MouseButtonLeft = 1 << 16,
-    ImGuiButtonFlags_MouseButtonRight = 1 << 17,
-    ImGuiButtonFlags_MouseButtonMiddle = 1 << 18,
-    ImGuiButtonFlags_MouseButtonMask_ = ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle,
-    ImGuiButtonFlags_MouseButtonShift_ = 16,
-    ImGuiButtonFlags_MouseButtonDefault_ = ImGuiButtonFlags_MouseButtonLeft,
-    ImGuiButtonFlags_PressedOnMask_ = ImGuiButtonFlags_PressedOnClick | ImGuiButtonFlags_PressedOnClickRelease | ImGuiButtonFlags_PressedOnClickReleaseAnywhere | ImGuiButtonFlags_PressedOnRelease | ImGuiButtonFlags_PressedOnDoubleClick | ImGuiButtonFlags_PressedOnDragDropHold,
-    ImGuiButtonFlags_PressedOnDefault_ = ImGuiButtonFlags_PressedOnClickRelease
-}ImGuiButtonFlags_;
-typedef enum {
-    ImGuiSliderFlags_None = 0,
-    ImGuiSliderFlags_Vertical = 1 << 0
-}ImGuiSliderFlags_;
-typedef enum {
-    ImGuiDragFlags_None = 0,
-    ImGuiDragFlags_Vertical = 1 << 0
-}ImGuiDragFlags_;
-typedef enum {
-    ImGuiColumnsFlags_None = 0,
-    ImGuiColumnsFlags_NoBorder = 1 << 0,
-    ImGuiColumnsFlags_NoResize = 1 << 1,
-    ImGuiColumnsFlags_NoPreserveWidths = 1 << 2,
-    ImGuiColumnsFlags_NoForceWithinWindow = 1 << 3,
-    ImGuiColumnsFlags_GrowParentContentsSize= 1 << 4
-}ImGuiColumnsFlags_;
-typedef enum {
-    ImGuiSelectableFlags_NoHoldingActiveID = 1 << 20,
-    ImGuiSelectableFlags_SelectOnClick = 1 << 21,
-    ImGuiSelectableFlags_SelectOnRelease = 1 << 22,
-    ImGuiSelectableFlags_SpanAvailWidth = 1 << 23,
-    ImGuiSelectableFlags_DrawHoveredWhenHeld= 1 << 24,
-    ImGuiSelectableFlags_SetNavIdOnHover = 1 << 25
-}ImGuiSelectableFlagsPrivate_;
-typedef enum {
-    ImGuiTreeNodeFlags_ClipLabelForTrailingButton = 1 << 20
-}ImGuiTreeNodeFlagsPrivate_;
-typedef enum {
-    ImGuiSeparatorFlags_None = 0,
-    ImGuiSeparatorFlags_Horizontal = 1 << 0,
-    ImGuiSeparatorFlags_Vertical = 1 << 1,
-    ImGuiSeparatorFlags_SpanAllColumns = 1 << 2
-}ImGuiSeparatorFlags_;
+struct ImDrawListSharedData
+{
+    ImVec2 TexUvWhitePixel;
+    ImFont* Font;
+    float FontSize;
+    float CurveTessellationTol;
+    float CircleSegmentMaxError;
+    ImVec4 ClipRectFullscreen;
+    ImDrawListFlags InitialFlags;
+    ImVec2 ArcFastVtx[48];
+    float ArcFastRadiusCutoff;
+    ImU8 CircleSegmentCounts[64];
+    const ImVec4* TexUvLines;
+};
+struct ImDrawDataBuilder
+{
+    ImVector_ImDrawListPtr Layers[2];
+};
 typedef enum {
     ImGuiItemFlags_None = 0,
     ImGuiItemFlags_NoTabStop = 1 << 0,
@@ -1161,6 +1366,7 @@ typedef enum {
     ImGuiItemFlags_NoNavDefaultFocus = 1 << 4,
     ImGuiItemFlags_SelectableDontClosePopup = 1 << 5,
     ImGuiItemFlags_MixedValue = 1 << 6,
+    ImGuiItemFlags_ReadOnly = 1 << 7,
     ImGuiItemFlags_Default_ = 0
 }ImGuiItemFlags_;
 typedef enum {
@@ -1171,8 +1377,51 @@ typedef enum {
     ImGuiItemStatusFlags_ToggledSelection = 1 << 3,
     ImGuiItemStatusFlags_ToggledOpen = 1 << 4,
     ImGuiItemStatusFlags_HasDeactivated = 1 << 5,
-    ImGuiItemStatusFlags_Deactivated = 1 << 6
+    ImGuiItemStatusFlags_Deactivated = 1 << 6,
+    ImGuiItemStatusFlags_HoveredWindow = 1 << 7
 }ImGuiItemStatusFlags_;
+typedef enum {
+    ImGuiButtonFlags_PressedOnClick = 1 << 4,
+    ImGuiButtonFlags_PressedOnClickRelease = 1 << 5,
+    ImGuiButtonFlags_PressedOnClickReleaseAnywhere = 1 << 6,
+    ImGuiButtonFlags_PressedOnRelease = 1 << 7,
+    ImGuiButtonFlags_PressedOnDoubleClick = 1 << 8,
+    ImGuiButtonFlags_PressedOnDragDropHold = 1 << 9,
+    ImGuiButtonFlags_Repeat = 1 << 10,
+    ImGuiButtonFlags_FlattenChildren = 1 << 11,
+    ImGuiButtonFlags_AllowItemOverlap = 1 << 12,
+    ImGuiButtonFlags_DontClosePopups = 1 << 13,
+    ImGuiButtonFlags_Disabled = 1 << 14,
+    ImGuiButtonFlags_AlignTextBaseLine = 1 << 15,
+    ImGuiButtonFlags_NoKeyModifiers = 1 << 16,
+    ImGuiButtonFlags_NoHoldingActiveId = 1 << 17,
+    ImGuiButtonFlags_NoNavFocus = 1 << 18,
+    ImGuiButtonFlags_NoHoveredOnFocus = 1 << 19,
+    ImGuiButtonFlags_PressedOnMask_ = ImGuiButtonFlags_PressedOnClick | ImGuiButtonFlags_PressedOnClickRelease | ImGuiButtonFlags_PressedOnClickReleaseAnywhere | ImGuiButtonFlags_PressedOnRelease | ImGuiButtonFlags_PressedOnDoubleClick | ImGuiButtonFlags_PressedOnDragDropHold,
+    ImGuiButtonFlags_PressedOnDefault_ = ImGuiButtonFlags_PressedOnClickRelease
+}ImGuiButtonFlagsPrivate_;
+typedef enum {
+    ImGuiSliderFlags_Vertical = 1 << 20,
+    ImGuiSliderFlags_ReadOnly = 1 << 21
+}ImGuiSliderFlagsPrivate_;
+typedef enum {
+    ImGuiSelectableFlags_NoHoldingActiveID = 1 << 20,
+    ImGuiSelectableFlags_SelectOnClick = 1 << 21,
+    ImGuiSelectableFlags_SelectOnRelease = 1 << 22,
+    ImGuiSelectableFlags_SpanAvailWidth = 1 << 23,
+    ImGuiSelectableFlags_DrawHoveredWhenHeld = 1 << 24,
+    ImGuiSelectableFlags_SetNavIdOnHover = 1 << 25,
+    ImGuiSelectableFlags_NoPadWithHalfSpacing = 1 << 26
+}ImGuiSelectableFlagsPrivate_;
+typedef enum {
+    ImGuiTreeNodeFlags_ClipLabelForTrailingButton = 1 << 20
+}ImGuiTreeNodeFlagsPrivate_;
+typedef enum {
+    ImGuiSeparatorFlags_None = 0,
+    ImGuiSeparatorFlags_Horizontal = 1 << 0,
+    ImGuiSeparatorFlags_Vertical = 1 << 1,
+    ImGuiSeparatorFlags_SpanAllColumns = 1 << 2
+}ImGuiSeparatorFlags_;
 typedef enum {
     ImGuiTextFlags_None = 0,
     ImGuiTextFlags_NoWidthForLargeClippedText = 1 << 0
@@ -1204,9 +1453,9 @@ typedef enum {
 typedef enum {
     ImGuiInputSource_None = 0,
     ImGuiInputSource_Mouse,
+    ImGuiInputSource_Keyboard,
+    ImGuiInputSource_Gamepad,
     ImGuiInputSource_Nav,
-    ImGuiInputSource_NavKeyboard,
-    ImGuiInputSource_NavGamepad,
     ImGuiInputSource_COUNT
 }ImGuiInputSource;
 typedef enum {
@@ -1252,24 +1501,17 @@ typedef enum {
 }ImGuiNavLayer;
 typedef enum {
     ImGuiPopupPositionPolicy_Default,
-    ImGuiPopupPositionPolicy_ComboBox
+    ImGuiPopupPositionPolicy_ComboBox,
+    ImGuiPopupPositionPolicy_Tooltip
 }ImGuiPopupPositionPolicy;
-struct ImVec1
+struct ImGuiDataTypeTempStorage
 {
-    float x;
-};
-struct ImVec2ih
-{
-    short x, y;
-};
-struct ImRect
-{
-    ImVec2 Min;
-    ImVec2 Max;
+    ImU8 Data[8];
 };
 struct ImGuiDataTypeInfo
 {
     size_t Size;
+    const char* Name;
     const char* PrintFmt;
     const char* ScanFmt;
 };
@@ -1290,6 +1532,7 @@ struct ImGuiStyleMod
 };
 struct ImGuiGroupData
 {
+    ImGuiID WindowID;
     ImVec2 BackupCursorPos;
     ImVec2 BackupCursorMaxPos;
     ImVec1 BackupIndent;
@@ -1298,6 +1541,7 @@ struct ImGuiGroupData
     float BackupCurrLineTextBaseOffset;
     ImGuiID BackupActiveIdIsAlive;
     bool BackupActiveIdPreviousFrameIsAlive;
+    bool BackupHoveredIdIsAlive;
     bool EmitItem;
 };
 struct ImGuiMenuColumns
@@ -1320,30 +1564,10 @@ struct ImGuiInputTextState
     float CursorAnim;
     bool CursorFollow;
     bool SelectedAllMouseLock;
+    bool Edited;
     ImGuiInputTextFlags UserFlags;
     ImGuiInputTextCallback UserCallback;
     void* UserCallbackData;
-};
-struct ImGuiWindowSettings
-{
-    ImGuiID ID;
-    ImVec2ih Pos;
-    ImVec2ih Size;
-    ImVec2ih ViewportPos;
-    ImGuiID ViewportId;
-    ImGuiID DockId;
-    ImGuiID ClassId;
-    short DockOrder;
-    bool Collapsed;
-};
-struct ImGuiSettingsHandler
-{
-    const char* TypeName;
-    ImGuiID TypeHash;
-    void* (*ReadOpenFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler, const char* name);
-    void (*ReadLineFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler, void* entry, const char* line);
-    void (*WriteAllFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler, ImGuiTextBuffer* out_buf);
-    void* UserData;
 };
 struct ImGuiPopupData
 {
@@ -1354,69 +1578,6 @@ struct ImGuiPopupData
     ImGuiID OpenParentId;
     ImVec2 OpenPopupPos;
     ImVec2 OpenMousePos;
-};
-struct ImGuiColumnData
-{
-    float OffsetNorm;
-    float OffsetNormBeforeResize;
-    ImGuiColumnsFlags Flags;
-    ImRect ClipRect;
-};
-struct ImGuiColumns
-{
-    ImGuiID ID;
-    ImGuiColumnsFlags Flags;
-    bool IsFirstFrame;
-    bool IsBeingResized;
-    int Current;
-    int Count;
-    float OffMinX, OffMaxX;
-    float LineMinY, LineMaxY;
-    float HostCursorPosY;
-    float HostCursorMaxPosX;
-    ImRect HostClipRect;
-    ImRect HostWorkRect;
-    ImVector_ImGuiColumnData Columns;
-    ImDrawListSplitter Splitter;
-};
-struct ImDrawListSharedData
-{
-    ImVec2 TexUvWhitePixel;
-    ImFont* Font;
-    float FontSize;
-    float CurveTessellationTol;
-    float CircleSegmentMaxError;
-    ImVec4 ClipRectFullscreen;
-    ImDrawListFlags InitialFlags;
-    ImVec2 ArcFastVtx[12 * 1];
-    ImU8 CircleSegmentCounts[64];
-};
-struct ImDrawDataBuilder
-{
-    ImVector_ImDrawListPtr Layers[2];
-};
-struct ImGuiViewportP
-{
-    ImGuiViewport _ImGuiViewport;
-    int Idx;
-    int LastFrameActive;
-    int LastFrameDrawLists[2];
-    int LastFrontMostStampCount;
-    ImGuiID LastNameHash;
-    ImVec2 LastPos;
-    float Alpha;
-    float LastAlpha;
-    short PlatformMonitor;
-    bool PlatformWindowCreated;
-    ImGuiWindow* Window;
-    ImDrawList* DrawLists[2];
-    ImDrawData DrawDataP;
-    ImDrawDataBuilder DrawDataBuilder;
-    ImVec2 LastPlatformPos;
-    ImVec2 LastPlatformSize;
-    ImVec2 LastRendererSize;
-    ImVec2 CurrWorkOffsetMin;
-    ImVec2 CurrWorkOffsetMax;
 };
 struct ImGuiNavMoveResult
 {
@@ -1489,6 +1650,39 @@ struct ImGuiPtrOrIndex
     int Index;
 };
 typedef enum {
+    ImGuiOldColumnFlags_None = 0,
+    ImGuiOldColumnFlags_NoBorder = 1 << 0,
+    ImGuiOldColumnFlags_NoResize = 1 << 1,
+    ImGuiOldColumnFlags_NoPreserveWidths = 1 << 2,
+    ImGuiOldColumnFlags_NoForceWithinWindow = 1 << 3,
+    ImGuiOldColumnFlags_GrowParentContentsSize = 1 << 4
+}ImGuiOldColumnFlags_;
+struct ImGuiOldColumnData
+{
+    float OffsetNorm;
+    float OffsetNormBeforeResize;
+    ImGuiOldColumnFlags Flags;
+    ImRect ClipRect;
+};
+struct ImGuiOldColumns
+{
+    ImGuiID ID;
+    ImGuiOldColumnFlags Flags;
+    bool IsFirstFrame;
+    bool IsBeingResized;
+    int Current;
+    int Count;
+    float OffMinX, OffMaxX;
+    float LineMinY, LineMaxY;
+    float HostCursorPosY;
+    float HostCursorMaxPosX;
+    ImRect HostInitialClipRect;
+    ImRect HostBackupClipRect;
+    ImRect HostBackupParentWorkRect;
+    ImVector_ImGuiOldColumnData Columns;
+    ImDrawListSplitter Splitter;
+};
+typedef enum {
     ImGuiDockNodeFlags_DockSpace = 1 << 10,
     ImGuiDockNodeFlags_CentralNode = 1 << 11,
     ImGuiDockNodeFlags_NoTabBar = 1 << 12,
@@ -1496,10 +1690,17 @@ typedef enum {
     ImGuiDockNodeFlags_NoWindowMenuButton = 1 << 14,
     ImGuiDockNodeFlags_NoCloseButton = 1 << 15,
     ImGuiDockNodeFlags_NoDocking = 1 << 16,
+    ImGuiDockNodeFlags_NoDockingSplitMe = 1 << 17,
+    ImGuiDockNodeFlags_NoDockingSplitOther = 1 << 18,
+    ImGuiDockNodeFlags_NoDockingOverMe = 1 << 19,
+    ImGuiDockNodeFlags_NoDockingOverOther = 1 << 20,
+    ImGuiDockNodeFlags_NoResizeX = 1 << 21,
+    ImGuiDockNodeFlags_NoResizeY = 1 << 22,
     ImGuiDockNodeFlags_SharedFlagsInheritMask_ = ~0,
-    ImGuiDockNodeFlags_LocalFlagsMask_ = ImGuiDockNodeFlags_NoSplit | ImGuiDockNodeFlags_NoResize | ImGuiDockNodeFlags_AutoHideTabBar | ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_CentralNode | ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoDocking,
+    ImGuiDockNodeFlags_NoResizeFlagsMask_ = ImGuiDockNodeFlags_NoResize | ImGuiDockNodeFlags_NoResizeX | ImGuiDockNodeFlags_NoResizeY,
+    ImGuiDockNodeFlags_LocalFlagsMask_ = ImGuiDockNodeFlags_NoSplit | ImGuiDockNodeFlags_NoResizeFlagsMask_ | ImGuiDockNodeFlags_AutoHideTabBar | ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_CentralNode | ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoDocking,
     ImGuiDockNodeFlags_LocalFlagsTransferMask_ = ImGuiDockNodeFlags_LocalFlagsMask_ & ~ImGuiDockNodeFlags_DockSpace,
-    ImGuiDockNodeFlags_SavedFlagsMask_ = ImGuiDockNodeFlags_NoResize | ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_CentralNode | ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoDocking
+    ImGuiDockNodeFlags_SavedFlagsMask_ = ImGuiDockNodeFlags_NoResizeFlagsMask_ | ImGuiDockNodeFlags_DockSpace | ImGuiDockNodeFlags_CentralNode | ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_HiddenTabBar | ImGuiDockNodeFlags_NoWindowMenuButton | ImGuiDockNodeFlags_NoCloseButton | ImGuiDockNodeFlags_NoDocking
 }ImGuiDockNodeFlagsPrivate_;
 typedef enum {
     ImGuiDataAuthority_Auto,
@@ -1517,6 +1718,7 @@ struct ImGuiDockNode
     ImGuiID ID;
     ImGuiDockNodeFlags SharedFlags;
     ImGuiDockNodeFlags LocalFlags;
+    ImGuiDockNodeState State;
     ImGuiDockNode* ParentNode;
     ImGuiDockNode* ChildNodes[2];
     ImVector_ImGuiWindowPtr Windows;
@@ -1526,7 +1728,6 @@ struct ImGuiDockNode
     ImVec2 SizeRef;
     ImGuiAxis SplitAxis;
     ImGuiWindowClass WindowClass;
-    ImGuiDockNodeState State;
     ImGuiWindow* HostWindow;
     ImGuiWindow* VisibleWindow;
     ImGuiDockNode* CentralNode;
@@ -1544,13 +1745,112 @@ struct ImGuiDockNode
     bool IsFocused :1;
     bool HasCloseButton :1;
     bool HasWindowMenuButton :1;
-    bool EnableCloseButton :1;
     bool WantCloseAll :1;
     bool WantLockSizeOnce :1;
     bool WantMouseMove :1;
     bool WantHiddenTabBarUpdate :1;
     bool WantHiddenTabBarToggle :1;
     bool MarkedForPosSizeWrite :1;
+};
+typedef enum {
+    ImGuiWindowDockStyleCol_Text,
+    ImGuiWindowDockStyleCol_Tab,
+    ImGuiWindowDockStyleCol_TabHovered,
+    ImGuiWindowDockStyleCol_TabActive,
+    ImGuiWindowDockStyleCol_TabUnfocused,
+    ImGuiWindowDockStyleCol_TabUnfocusedActive,
+    ImGuiWindowDockStyleCol_COUNT
+}ImGuiWindowDockStyleCol;
+struct ImGuiWindowDockStyle
+{
+    ImU32 Colors[ImGuiWindowDockStyleCol_COUNT];
+};
+struct ImGuiDockContext
+{
+    ImGuiStorage Nodes;
+    ImVector_ImGuiDockRequest Requests;
+    ImVector_ImGuiDockNodeSettings NodesSettings;
+    bool WantFullRebuild;
+};
+struct ImGuiViewportP
+{
+    ImGuiViewport _ImGuiViewport;
+    int Idx;
+    int LastFrameActive;
+    int LastFrontMostStampCount;
+    ImGuiID LastNameHash;
+    ImVec2 LastPos;
+    float Alpha;
+    float LastAlpha;
+    short PlatformMonitor;
+    bool PlatformWindowCreated;
+    ImGuiWindow* Window;
+    int DrawListsLastFrame[2];
+    ImDrawList* DrawLists[2];
+    ImDrawData DrawDataP;
+    ImDrawDataBuilder DrawDataBuilder;
+    ImVec2 LastPlatformPos;
+    ImVec2 LastPlatformSize;
+    ImVec2 LastRendererSize;
+    ImVec2 WorkOffsetMin;
+    ImVec2 WorkOffsetMax;
+    ImVec2 CurrWorkOffsetMin;
+    ImVec2 CurrWorkOffsetMax;
+};
+struct ImGuiWindowSettings
+{
+    ImGuiID ID;
+    ImVec2ih Pos;
+    ImVec2ih Size;
+    ImVec2ih ViewportPos;
+    ImGuiID ViewportId;
+    ImGuiID DockId;
+    ImGuiID ClassId;
+    short DockOrder;
+    bool Collapsed;
+    bool WantApply;
+};
+struct ImGuiSettingsHandler
+{
+    const char* TypeName;
+    ImGuiID TypeHash;
+    void (*ClearAllFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler);
+    void (*ReadInitFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler);
+    void* (*ReadOpenFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler, const char* name);
+    void (*ReadLineFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler, void* entry, const char* line);
+    void (*ApplyAllFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler);
+    void (*WriteAllFn)(ImGuiContext* ctx, ImGuiSettingsHandler* handler, ImGuiTextBuffer* out_buf);
+    void* UserData;
+};
+struct ImGuiMetricsConfig
+{
+    bool ShowWindowsRects;
+    bool ShowWindowsBeginOrder;
+    bool ShowTablesRects;
+    bool ShowDrawCmdMesh;
+    bool ShowDrawCmdBoundingBoxes;
+    bool ShowDockingNodes;
+    int ShowWindowsRectsType;
+    int ShowTablesRectsType;
+};
+struct ImGuiStackSizes
+{
+    short SizeOfIDStack;
+    short SizeOfColorStack;
+    short SizeOfStyleVarStack;
+    short SizeOfFontStack;
+    short SizeOfFocusScopeStack;
+    short SizeOfGroupStack;
+    short SizeOfBeginPopupStack;
+};
+typedef enum { ImGuiContextHookType_NewFramePre, ImGuiContextHookType_NewFramePost, ImGuiContextHookType_EndFramePre, ImGuiContextHookType_EndFramePost, ImGuiContextHookType_RenderPre, ImGuiContextHookType_RenderPost, ImGuiContextHookType_Shutdown, ImGuiContextHookType_PendingRemoval_ }ImGuiContextHookType;
+struct ImGuiContextHook
+{
+    ImGuiID HookId;
+    ImGuiContextHookType Type;
+    ImGuiID Owner;
+    ImGuiContextHookCallback Callback;
+    void* UserData;
 };
 struct ImGuiContext
 {
@@ -1573,6 +1873,7 @@ struct ImGuiContext
     bool WithinFrameScope;
     bool WithinFrameScopeWithImplicitWindow;
     bool WithinEndChild;
+    bool GcCompactAll;
     bool TestEngineHookItems;
     ImGuiID TestEngineHookIdInfo;
     void* TestEngine;
@@ -1584,15 +1885,18 @@ struct ImGuiContext
     int WindowsActiveCount;
     ImGuiWindow* CurrentWindow;
     ImGuiWindow* HoveredWindow;
-    ImGuiWindow* HoveredRootWindow;
     ImGuiWindow* HoveredWindowUnderMovingWindow;
+    ImGuiDockNode* HoveredDockNode;
     ImGuiWindow* MovingWindow;
     ImGuiWindow* WheelingWindow;
     ImVec2 WheelingWindowRefMousePos;
     float WheelingWindowTimer;
     ImGuiID HoveredId;
-    bool HoveredIdAllowOverlap;
     ImGuiID HoveredIdPreviousFrame;
+    bool HoveredIdAllowOverlap;
+    bool HoveredIdUsingMouseWheel;
+    bool HoveredIdPreviousFrameUsingMouseWheel;
+    bool HoveredIdDisabled;
     float HoveredIdTimer;
     float HoveredIdNotActiveTimer;
     ImGuiID ActiveId;
@@ -1600,9 +1904,11 @@ struct ImGuiContext
     float ActiveIdTimer;
     bool ActiveIdIsJustActivated;
     bool ActiveIdAllowOverlap;
+    bool ActiveIdNoClearOnFocusLoss;
     bool ActiveIdHasBeenPressedBefore;
     bool ActiveIdHasBeenEditedBefore;
     bool ActiveIdHasBeenEditedThisFrame;
+    bool ActiveIdUsingMouseWheel;
     ImU32 ActiveIdUsingNavDirMask;
     ImU32 ActiveIdUsingNavInputMask;
     ImU64 ActiveIdUsingKeyInputMask;
@@ -1618,9 +1924,12 @@ struct ImGuiContext
     float LastActiveIdTimer;
     ImGuiNextWindowData NextWindowData;
     ImGuiNextItemData NextItemData;
-    ImVector_ImGuiColorMod ColorModifiers;
-    ImVector_ImGuiStyleMod StyleModifiers;
+    ImVector_ImGuiColorMod ColorStack;
+    ImVector_ImGuiStyleMod StyleVarStack;
     ImVector_ImFontPtr FontStack;
+    ImVector_ImGuiID FocusScopeStack;
+    ImVector_ImGuiItemFlags ItemFlagsStack;
+    ImVector_ImGuiGroupData GroupStack;
     ImVector_ImGuiPopupData OpenPopupStack;
     ImVector_ImGuiPopupData BeginPopupStack;
     ImVector_ImGuiViewportPPtr Viewports;
@@ -1628,7 +1937,8 @@ struct ImGuiContext
     ImGuiViewportP* CurrentViewport;
     ImGuiViewportP* MouseViewport;
     ImGuiViewportP* MouseLastHoveredViewport;
-    ImGuiID PlatformLastFocusedViewport;
+    ImGuiID PlatformLastFocusedViewportId;
+    ImGuiPlatformMonitor FallbackMonitor;
     int ViewportFrontMostStampCount;
     ImGuiWindow* NavWindow;
     ImGuiID NavId;
@@ -1656,7 +1966,6 @@ struct ImGuiContext
     bool NavInitRequestFromMove;
     ImGuiID NavInitResultId;
     ImRect NavInitResultRectRel;
-    bool NavMoveFromClampedRefRect;
     bool NavMoveRequest;
     ImGuiNavMoveFlags NavMoveRequestFlags;
     ImGuiNavForward NavMoveRequestForward;
@@ -1666,19 +1975,21 @@ struct ImGuiContext
     ImGuiNavMoveResult NavMoveResultLocal;
     ImGuiNavMoveResult NavMoveResultLocalVisibleSet;
     ImGuiNavMoveResult NavMoveResultOther;
+    ImGuiWindow* NavWrapRequestWindow;
+    ImGuiNavMoveFlags NavWrapRequestFlags;
     ImGuiWindow* NavWindowingTarget;
     ImGuiWindow* NavWindowingTargetAnim;
-    ImGuiWindow* NavWindowingList;
+    ImGuiWindow* NavWindowingListWindow;
     float NavWindowingTimer;
     float NavWindowingHighlightAlpha;
     bool NavWindowingToggleLayer;
-    ImGuiWindow* FocusRequestCurrWindow;
-    ImGuiWindow* FocusRequestNextWindow;
-    int FocusRequestCurrCounterRegular;
-    int FocusRequestCurrCounterTabStop;
-    int FocusRequestNextCounterRegular;
-    int FocusRequestNextCounterTabStop;
-    bool FocusTabPressed;
+    ImGuiWindow* TabFocusRequestCurrWindow;
+    ImGuiWindow* TabFocusRequestNextWindow;
+    int TabFocusRequestCurrCounterRegular;
+    int TabFocusRequestCurrCounterTabStop;
+    int TabFocusRequestNextCounterRegular;
+    int TabFocusRequestNextCounterTabStop;
+    bool TabFocusPressed;
     float DimBgRatio;
     ImGuiMouseCursor MouseCursor;
     bool DragDropActive;
@@ -1698,6 +2009,11 @@ struct ImGuiContext
     ImGuiID DragDropHoldJustPressedId;
     ImVector_unsigned_char DragDropPayloadBufHeap;
     unsigned char DragDropPayloadBufLocal[16];
+    ImGuiTable* CurrentTable;
+    ImPool_ImGuiTable Tables;
+    ImVector_ImGuiPtrOrIndex CurrentTableStack;
+    ImVector_float TablesLastTimeActive;
+    ImVector_ImDrawChannel DrawChannelsTempMergeBuffer;
     ImGuiTabBar* CurrentTabBar;
     ImPool_ImGuiTabBar TabBars;
     ImVector_ImGuiPtrOrIndex CurrentTabBarStack;
@@ -1711,26 +2027,35 @@ struct ImGuiContext
     float ColorEditLastSat;
     float ColorEditLastColor[3];
     ImVec4 ColorPickerRef;
+    float SliderCurrentAccum;
+    bool SliderCurrentAccumDirty;
     bool DragCurrentAccumDirty;
     float DragCurrentAccum;
     float DragSpeedDefaultRatio;
     float ScrollbarClickDeltaToGrabCenter;
     int TooltipOverrideCount;
+    float TooltipSlowDelay;
     ImVector_char ClipboardHandlerData;
     ImVector_ImGuiID MenusIdSubmittedThisFrame;
     ImVec2 PlatformImePos;
     ImVec2 PlatformImeLastPos;
     ImGuiViewportP* PlatformImePosViewport;
-    ImGuiDockContext* DockContext;
+    char PlatformLocaleDecimalPoint;
+    ImGuiDockContext DockContext;
     bool SettingsLoaded;
     float SettingsDirtyTimer;
     ImGuiTextBuffer SettingsIniData;
     ImVector_ImGuiSettingsHandler SettingsHandlers;
     ImChunkStream_ImGuiWindowSettings SettingsWindows;
+    ImChunkStream_ImGuiTableSettings SettingsTables;
+    ImVector_ImGuiContextHook Hooks;
+    ImGuiID HookIdNext;
     bool LogEnabled;
     ImGuiLogType LogType;
     ImFileHandle LogFile;
     ImGuiTextBuffer LogBuffer;
+    const char* LogNextPrefix;
+    const char* LogNextSuffix;
     float LogLinePosY;
     bool LogLineFirstItem;
     int LogDepthRef;
@@ -1738,13 +2063,14 @@ struct ImGuiContext
     int LogDepthToExpandDefault;
     bool DebugItemPickerActive;
     ImGuiID DebugItemPickerBreakId;
+    ImGuiMetricsConfig DebugMetricsConfig;
     float FramerateSecPerFrame[120];
     int FramerateSecPerFrameIdx;
     float FramerateSecPerFrameAccum;
     int WantCaptureMouseNextFrame;
     int WantCaptureKeyboardNextFrame;
     int WantTextInputNextFrame;
-    char TempBuffer[1024*3+1];
+    char TempBuffer[1024 * 3 + 1];
 };
 struct ImGuiWindowTempData
 {
@@ -1752,6 +2078,7 @@ struct ImGuiWindowTempData
     ImVec2 CursorPosPrevLine;
     ImVec2 CursorStartPos;
     ImVec2 CursorMaxPos;
+    ImVec2 IdealMaxPos;
     ImVec2 CurrLineSize;
     ImVec2 PrevLineSize;
     float CurrLineTextBaseOffset;
@@ -1764,7 +2091,6 @@ struct ImGuiWindowTempData
     ImRect LastItemRect;
     ImRect LastItemDisplayRect;
     ImGuiNavLayer NavLayerCurrent;
-    int NavLayerCurrentMask;
     int NavLayerActiveMask;
     int NavLayerActiveMaskNext;
     ImGuiID NavFocusScopeIdCurrent;
@@ -1777,7 +2103,8 @@ struct ImGuiWindowTempData
     ImU32 TreeJumpToParentOnPopMask;
     ImVector_ImGuiWindowPtr ChildWindows;
     ImGuiStorage* StateStorage;
-    ImGuiColumns* CurrentColumns;
+    ImGuiOldColumns* CurrentColumns;
+    int CurrentTableIdx;
     ImGuiLayoutType LayoutType;
     ImGuiLayoutType ParentLayoutType;
     int FocusCounterRegular;
@@ -1785,11 +2112,9 @@ struct ImGuiWindowTempData
     ImGuiItemFlags ItemFlags;
     float ItemWidth;
     float TextWrapPos;
-    ImVector_ImGuiItemFlags ItemFlagsStack;
     ImVector_float ItemWidthStack;
     ImVector_float TextWrapPosStack;
-    ImVector_ImGuiGroupData GroupStack;
-    short StackSizesBackup[6];
+    ImGuiStackSizes StackSizesOnBegin;
 };
 struct ImGuiWindow
 {
@@ -1805,6 +2130,7 @@ struct ImGuiWindow
     ImVec2 Size;
     ImVec2 SizeFull;
     ImVec2 ContentSize;
+    ImVec2 ContentSizeIdeal;
     ImVec2 ContentSizeExplicit;
     ImVec2 WindowPadding;
     float WindowRounding;
@@ -1816,6 +2142,7 @@ struct ImGuiWindow
     ImVec2 ScrollMax;
     ImVec2 ScrollTarget;
     ImVec2 ScrollTargetCenterRatio;
+    ImVec2 ScrollTargetEdgeSnapDist;
     ImVec2 ScrollbarSizes;
     bool ScrollbarX, ScrollbarY;
     bool ViewportOwned;
@@ -1838,12 +2165,14 @@ struct ImGuiWindow
     ImS8 AutoFitChildAxises;
     bool AutoFitOnlyGrows;
     ImGuiDir AutoPosLastDirection;
-    int HiddenFramesCanSkipItems;
-    int HiddenFramesCannotSkipItems;
-    ImGuiCond SetWindowPosAllowFlags;
-    ImGuiCond SetWindowSizeAllowFlags;
-    ImGuiCond SetWindowCollapsedAllowFlags;
-    ImGuiCond SetWindowDockAllowFlags;
+    ImS8 HiddenFramesCanSkipItems;
+    ImS8 HiddenFramesCannotSkipItems;
+    ImS8 HiddenFramesForRenderOnly;
+    ImS8 DisableInputsFrames;
+    ImGuiCond SetWindowPosAllowFlags : 8;
+    ImGuiCond SetWindowSizeAllowFlags : 8;
+    ImGuiCond SetWindowCollapsedAllowFlags : 8;
+    ImGuiCond SetWindowDockAllowFlags : 8;
     ImVec2 SetWindowPosVal;
     ImVec2 SetWindowPosPivot;
     ImVector_ImGuiID IDStack;
@@ -1852,15 +2181,17 @@ struct ImGuiWindow
     ImRect InnerRect;
     ImRect InnerClipRect;
     ImRect WorkRect;
+    ImRect ParentWorkRect;
     ImRect ClipRect;
     ImRect ContentRegionRect;
-    ImVec2ih HitTestHoleSize, HitTestHoleOffset;
+    ImVec2ih HitTestHoleSize;
+    ImVec2ih HitTestHoleOffset;
     int LastFrameActive;
     int LastFrameJustFocused;
     float LastTimeActive;
     float ItemWidthDefault;
     ImGuiStorage StateStorage;
-    ImVector_ImGuiColumns ColumnsStorage;
+    ImVector_ImGuiOldColumns ColumnsStorage;
     float FontWindowScale;
     float FontDpiScale;
     int SettingsOffset;
@@ -1868,26 +2199,27 @@ struct ImGuiWindow
     ImDrawList DrawListInst;
     ImGuiWindow* ParentWindow;
     ImGuiWindow* RootWindow;
-    ImGuiWindow* RootWindowDockStop;
+    ImGuiWindow* RootWindowDockTree;
     ImGuiWindow* RootWindowForTitleBarHighlight;
     ImGuiWindow* RootWindowForNav;
     ImGuiWindow* NavLastChildNavWindow;
     ImGuiID NavLastIds[ImGuiNavLayer_COUNT];
     ImRect NavRectRel[ImGuiNavLayer_COUNT];
-    bool MemoryCompacted;
     int MemoryDrawListIdxCapacity;
     int MemoryDrawListVtxCapacity;
+    bool MemoryCompacted;
+    bool DockIsActive :1;
+    bool DockTabIsVisible :1;
+    bool DockTabWantClose :1;
+    short DockOrder;
+    ImGuiWindowDockStyle DockStyle;
     ImGuiDockNode* DockNode;
     ImGuiDockNode* DockNodeAsHost;
     ImGuiID DockId;
     ImGuiItemStatusFlags DockTabItemStatusFlags;
     ImRect DockTabItemRect;
-    short DockOrder;
-    bool DockIsActive :1;
-    bool DockTabIsVisible :1;
-    bool DockTabWantClose :1;
 };
-struct ImGuiItemHoveredDataBackup
+struct ImGuiLastItemDataBackup
 {
     ImGuiID LastItemId;
     ImGuiItemStatusFlags LastItemStatusFlags;
@@ -1901,8 +2233,9 @@ typedef enum {
 }ImGuiTabBarFlagsPrivate_;
 typedef enum {
     ImGuiTabItemFlags_NoCloseButton = 1 << 20,
-    ImGuiTabItemFlags_Unsorted = 1 << 21,
-    ImGuiTabItemFlags_Preview = 1 << 22
+    ImGuiTabItemFlags_Button = 1 << 21,
+    ImGuiTabItemFlags_Unsorted = 1 << 22,
+    ImGuiTabItemFlags_Preview = 1 << 23
 }ImGuiTabItemFlagsPrivate_;
 struct ImGuiTabItem
 {
@@ -1911,14 +2244,18 @@ struct ImGuiTabItem
     ImGuiWindow* Window;
     int LastFrameVisible;
     int LastFrameSelected;
-    int NameOffset;
     float Offset;
     float Width;
     float ContentWidth;
+    ImS16 NameOffset;
+    ImS16 BeginOrder;
+    ImS16 IndexDuringLayout;
+    bool WantClose;
 };
 struct ImGuiTabBar
 {
     ImVector_ImGuiTabItem Tabs;
+    ImGuiTabBarFlags Flags;
     ImGuiID ID;
     ImGuiID SelectedTabId;
     ImGuiID NextSelectedTabId;
@@ -1926,33 +2263,217 @@ struct ImGuiTabBar
     int CurrFrameVisible;
     int PrevFrameVisible;
     ImRect BarRect;
-    float LastTabContentHeight;
-    float OffsetMax;
-    float OffsetMaxIdeal;
-    float OffsetNextTab;
+    float CurrTabsContentsHeight;
+    float PrevTabsContentsHeight;
+    float WidthAllTabs;
+    float WidthAllTabsIdeal;
     float ScrollingAnim;
     float ScrollingTarget;
     float ScrollingTargetDistToVisibility;
     float ScrollingSpeed;
-    ImGuiTabBarFlags Flags;
+    float ScrollingRectMinX;
+    float ScrollingRectMaxX;
     ImGuiID ReorderRequestTabId;
     ImS8 ReorderRequestDir;
+    ImS8 BeginCount;
     bool WantLayout;
     bool VisibleTabWasSubmitted;
-    short LastTabItemIdx;
+    bool TabsAddedNew;
+    ImS16 TabsActiveCount;
+    ImS16 LastTabItemIdx;
+    float ItemSpacingY;
     ImVec2 FramePadding;
+    ImVec2 BackupCursorPos;
     ImGuiTextBuffer TabsNames;
 };
-struct ImGuiTextRange
+struct ImGuiTableColumn
 {
-        const char* b;
-        const char* e;
+    ImGuiTableColumnFlags Flags;
+    float WidthGiven;
+    float MinX;
+    float MaxX;
+    float WidthRequest;
+    float WidthAuto;
+    float StretchWeight;
+    float InitStretchWeightOrWidth;
+    ImRect ClipRect;
+    ImGuiID UserID;
+    float WorkMinX;
+    float WorkMaxX;
+    float ItemWidth;
+    float ContentMaxXFrozen;
+    float ContentMaxXUnfrozen;
+    float ContentMaxXHeadersUsed;
+    float ContentMaxXHeadersIdeal;
+    ImS16 NameOffset;
+    ImGuiTableColumnIdx DisplayOrder;
+    ImGuiTableColumnIdx IndexWithinEnabledSet;
+    ImGuiTableColumnIdx PrevEnabledColumn;
+    ImGuiTableColumnIdx NextEnabledColumn;
+    ImGuiTableColumnIdx SortOrder;
+    ImGuiTableDrawChannelIdx DrawChannelCurrent;
+    ImGuiTableDrawChannelIdx DrawChannelFrozen;
+    ImGuiTableDrawChannelIdx DrawChannelUnfrozen;
+    bool IsEnabled;
+    bool IsEnabledNextFrame;
+    bool IsVisibleX;
+    bool IsVisibleY;
+    bool IsRequestOutput;
+    bool IsSkipItems;
+    bool IsPreserveWidthAuto;
+    ImS8 NavLayerCurrent;
+    ImU8 AutoFitQueue;
+    ImU8 CannotSkipItemsQueue;
+    ImU8 SortDirection : 2;
+    ImU8 SortDirectionsAvailCount : 2;
+    ImU8 SortDirectionsAvailMask : 4;
+    ImU8 SortDirectionsAvailList;
 };
-struct ImGuiStoragePair
+struct ImGuiTableCellData
 {
-        ImGuiID key;
-        union { int val_i; float val_f; void* val_p; };
+    ImU32 BgColor;
+    ImGuiTableColumnIdx Column;
 };
+struct ImGuiTable
+{
+    ImGuiID ID;
+    ImGuiTableFlags Flags;
+    void* RawData;
+    ImSpan_ImGuiTableColumn Columns;
+    ImSpan_ImGuiTableColumnIdx DisplayOrderToIndex;
+    ImSpan_ImGuiTableCellData RowCellData;
+    ImU64 EnabledMaskByDisplayOrder;
+    ImU64 EnabledMaskByIndex;
+    ImU64 VisibleMaskByIndex;
+    ImU64 RequestOutputMaskByIndex;
+    ImGuiTableFlags SettingsLoadedFlags;
+    int SettingsOffset;
+    int LastFrameActive;
+    int ColumnsCount;
+    int CurrentRow;
+    int CurrentColumn;
+    ImS16 InstanceCurrent;
+    ImS16 InstanceInteracted;
+    float RowPosY1;
+    float RowPosY2;
+    float RowMinHeight;
+    float RowTextBaseline;
+    float RowIndentOffsetX;
+    ImGuiTableRowFlags RowFlags : 16;
+    ImGuiTableRowFlags LastRowFlags : 16;
+    int RowBgColorCounter;
+    ImU32 RowBgColor[2];
+    ImU32 BorderColorStrong;
+    ImU32 BorderColorLight;
+    float BorderX1;
+    float BorderX2;
+    float HostIndentX;
+    float MinColumnWidth;
+    float OuterPaddingX;
+    float CellPaddingX;
+    float CellPaddingY;
+    float CellSpacingX1;
+    float CellSpacingX2;
+    float LastOuterHeight;
+    float LastFirstRowHeight;
+    float InnerWidth;
+    float ColumnsGivenWidth;
+    float ColumnsAutoFitWidth;
+    float ResizedColumnNextWidth;
+    float ResizeLockMinContentsX2;
+    float RefScale;
+    ImRect OuterRect;
+    ImRect InnerRect;
+    ImRect WorkRect;
+    ImRect InnerClipRect;
+    ImRect BgClipRect;
+    ImRect Bg0ClipRectForDrawCmd;
+    ImRect Bg2ClipRectForDrawCmd;
+    ImRect HostClipRect;
+    ImRect HostBackupWorkRect;
+    ImRect HostBackupParentWorkRect;
+    ImRect HostBackupInnerClipRect;
+    ImVec2 HostBackupPrevLineSize;
+    ImVec2 HostBackupCurrLineSize;
+    ImVec2 HostBackupCursorMaxPos;
+    ImVec2 UserOuterSize;
+    ImVec1 HostBackupColumnsOffset;
+    float HostBackupItemWidth;
+    int HostBackupItemWidthStackSize;
+    ImGuiWindow* OuterWindow;
+    ImGuiWindow* InnerWindow;
+    ImGuiTextBuffer ColumnsNames;
+    ImDrawListSplitter DrawSplitter;
+    ImGuiTableColumnSortSpecs SortSpecsSingle;
+    ImVector_ImGuiTableColumnSortSpecs SortSpecsMulti;
+    ImGuiTableSortSpecs SortSpecs;
+    ImGuiTableColumnIdx SortSpecsCount;
+    ImGuiTableColumnIdx ColumnsEnabledCount;
+    ImGuiTableColumnIdx ColumnsEnabledFixedCount;
+    ImGuiTableColumnIdx DeclColumnsCount;
+    ImGuiTableColumnIdx HoveredColumnBody;
+    ImGuiTableColumnIdx HoveredColumnBorder;
+    ImGuiTableColumnIdx AutoFitSingleColumn;
+    ImGuiTableColumnIdx ResizedColumn;
+    ImGuiTableColumnIdx LastResizedColumn;
+    ImGuiTableColumnIdx HeldHeaderColumn;
+    ImGuiTableColumnIdx ReorderColumn;
+    ImGuiTableColumnIdx ReorderColumnDir;
+    ImGuiTableColumnIdx LeftMostEnabledColumn;
+    ImGuiTableColumnIdx RightMostEnabledColumn;
+    ImGuiTableColumnIdx LeftMostStretchedColumn;
+    ImGuiTableColumnIdx RightMostStretchedColumn;
+    ImGuiTableColumnIdx ContextPopupColumn;
+    ImGuiTableColumnIdx FreezeRowsRequest;
+    ImGuiTableColumnIdx FreezeRowsCount;
+    ImGuiTableColumnIdx FreezeColumnsRequest;
+    ImGuiTableColumnIdx FreezeColumnsCount;
+    ImGuiTableColumnIdx RowCellDataCurrent;
+    ImGuiTableDrawChannelIdx DummyDrawChannel;
+    ImGuiTableDrawChannelIdx Bg2DrawChannelCurrent;
+    ImGuiTableDrawChannelIdx Bg2DrawChannelUnfrozen;
+    bool IsLayoutLocked;
+    bool IsInsideRow;
+    bool IsInitializing;
+    bool IsSortSpecsDirty;
+    bool IsUsingHeaders;
+    bool IsContextPopupOpen;
+    bool IsSettingsRequestLoad;
+    bool IsSettingsDirty;
+    bool IsDefaultDisplayOrder;
+    bool IsResetAllRequest;
+    bool IsResetDisplayOrderRequest;
+    bool IsUnfrozenRows;
+    bool IsDefaultSizingPolicy;
+    bool MemoryCompacted;
+    bool HostSkipItems;
+};
+struct ImGuiTableColumnSettings
+{
+    float WidthOrWeight;
+    ImGuiID UserID;
+    ImGuiTableColumnIdx Index;
+    ImGuiTableColumnIdx DisplayOrder;
+    ImGuiTableColumnIdx SortOrder;
+    ImU8 SortDirection : 2;
+    ImU8 IsEnabled : 1;
+    ImU8 IsStretch : 1;
+};
+struct ImGuiTableSettings
+{
+    ImGuiID ID;
+    ImGuiTableFlags SaveFlags;
+    float RefScale;
+    ImGuiTableColumnIdx ColumnsCount;
+    ImGuiTableColumnIdx ColumnsCountMax;
+    bool WantApply;
+};
+struct ImFontBuilderIO
+{
+    bool (*FontBuilder_Build)(ImFontAtlas* atlas);
+};
+
+#endif // !defined(CIMGUI_DEFINE_ENUMS_AND_STRUCTS) && !defined(RIZZ__IMGUI)
 
 typedef struct rizz_api_imgui
 {
@@ -1966,21 +2487,15 @@ typedef struct rizz_api_imgui
     void           (*EndFrame)(void);
     void           (*Render)(void);
     ImDrawData*    (*GetDrawData)(void);
-    void           (*ShowDemoWindow)(bool *p_open);
-    void           (*ShowAboutWindow)(bool *p_open);
     void           (*ShowMetricsWindow)(bool *p_open);
-    void           (*ShowStyleEditor)(ImGuiStyle *ref);
-    bool           (*ShowStyleSelector)(const char *label);
-    void           (*ShowFontSelector)(const char *label);
-    void           (*ShowUserGuide)(void);
     const char*    (*GetVersion)(void);
     void           (*StyleColorsDark)(ImGuiStyle *dst);
-    void           (*StyleColorsClassic)(ImGuiStyle *dst);
     void           (*StyleColorsLight)(ImGuiStyle *dst);
+    void           (*StyleColorsClassic)(ImGuiStyle *dst);
     bool           (*Begin)(const char *name, bool *p_open, ImGuiWindowFlags flags);
     void           (*End)(void);
-    bool           (*BeginChildStr)(const char *str_id, const ImVec2 size, bool border, ImGuiWindowFlags flags);
-    bool           (*BeginChildID)(ImGuiID id, const ImVec2 size, bool border, ImGuiWindowFlags flags);
+    bool           (*BeginChild_Str)(const char *str_id, const ImVec2 size, bool border, ImGuiWindowFlags flags);
+    bool           (*BeginChild_ID)(ImGuiID id, const ImVec2 size, bool border, ImGuiWindowFlags flags);
     void           (*EndChild)(void);
     bool           (*IsWindowAppearing)(void);
     bool           (*IsWindowCollapsed)(void);
@@ -1988,11 +2503,11 @@ typedef struct rizz_api_imgui
     bool           (*IsWindowHovered)(ImGuiHoveredFlags flags);
     ImDrawList*    (*GetWindowDrawList)(void);
     float          (*GetWindowDpiScale)(void);
-    ImGuiViewport*  (*GetWindowViewport)(void);
     void           (*GetWindowPos)(ImVec2 *pOut);
     void           (*GetWindowSize)(ImVec2 *pOut);
     float          (*GetWindowWidth)(void);
     float          (*GetWindowHeight)(void);
+    ImGuiViewport*  (*GetWindowViewport)(void);
     void           (*SetNextWindowPos)(const ImVec2 pos, ImGuiCond cond, const ImVec2 pivot);
     void           (*SetNextWindowSize)(const ImVec2 size, ImGuiCond cond);
     void           (*SetNextWindowSizeConstraints)(const ImVec2 size_min, const ImVec2 size_max, ImGuiSizeCallback custom_callback, void *custom_callback_data);
@@ -2001,55 +2516,55 @@ typedef struct rizz_api_imgui
     void           (*SetNextWindowFocus)(void);
     void           (*SetNextWindowBgAlpha)(float alpha);
     void           (*SetNextWindowViewport)(ImGuiID viewport_id);
-    void           (*SetWindowPosVec2)(const ImVec2 pos, ImGuiCond cond);
-    void           (*SetWindowSizeVec2)(const ImVec2 size, ImGuiCond cond);
-    void           (*SetWindowCollapsedBool)(bool collapsed, ImGuiCond cond);
-    void           (*SetWindowFocusNil)(void);
+    void           (*SetWindowPos_Vec2)(const ImVec2 pos, ImGuiCond cond);
+    void           (*SetWindowSize_Vec2)(const ImVec2 size, ImGuiCond cond);
+    void           (*SetWindowCollapsed_Bool)(bool collapsed, ImGuiCond cond);
+    void           (*SetWindowFocus_Nil)(void);
     void           (*SetWindowFontScale)(float scale);
-    void           (*SetWindowPosStr)(const char *name, const ImVec2 pos, ImGuiCond cond);
-    void           (*SetWindowSizeStr)(const char *name, const ImVec2 size, ImGuiCond cond);
-    void           (*SetWindowCollapsedStr)(const char *name, bool collapsed, ImGuiCond cond);
-    void           (*SetWindowFocusStr)(const char *name);
-    void           (*GetContentRegionMax)(ImVec2 *pOut);
+    void           (*SetWindowPos_Str)(const char *name, const ImVec2 pos, ImGuiCond cond);
+    void           (*SetWindowSize_Str)(const char *name, const ImVec2 size, ImGuiCond cond);
+    void           (*SetWindowCollapsed_Str)(const char *name, bool collapsed, ImGuiCond cond);
+    void           (*SetWindowFocus_Str)(const char *name);
     void           (*GetContentRegionAvail)(ImVec2 *pOut);
+    void           (*GetContentRegionMax)(ImVec2 *pOut);
     void           (*GetWindowContentRegionMin)(ImVec2 *pOut);
     void           (*GetWindowContentRegionMax)(ImVec2 *pOut);
     float          (*GetWindowContentRegionWidth)(void);
     float          (*GetScrollX)(void);
     float          (*GetScrollY)(void);
+    void           (*SetScrollX_Float)(float scroll_x);
+    void           (*SetScrollY_Float)(float scroll_y);
     float          (*GetScrollMaxX)(void);
     float          (*GetScrollMaxY)(void);
-    void           (*SetScrollXFloat)(float scroll_x);
-    void           (*SetScrollYFloat)(float scroll_y);
     void           (*SetScrollHereX)(float center_x_ratio);
     void           (*SetScrollHereY)(float center_y_ratio);
-    void           (*SetScrollFromPosXFloat)(float local_x, float center_x_ratio);
-    void           (*SetScrollFromPosYFloat)(float local_y, float center_y_ratio);
+    void           (*SetScrollFromPosX_Float)(float local_x, float center_x_ratio);
+    void           (*SetScrollFromPosY_Float)(float local_y, float center_y_ratio);
     void           (*PushFont)(ImFont *font);
     void           (*PopFont)(void);
-    void           (*PushStyleColorU32)(ImGuiCol idx, ImU32 col);
-    void           (*PushStyleColorVec4)(ImGuiCol idx, const ImVec4 col);
+    void           (*PushStyleColor_U32)(ImGuiCol idx, ImU32 col);
+    void           (*PushStyleColor_Vec4)(ImGuiCol idx, const ImVec4 col);
     void           (*PopStyleColor)(int count);
-    void           (*PushStyleVarFloat)(ImGuiStyleVar idx, float val);
-    void           (*PushStyleVarVec2)(ImGuiStyleVar idx, const ImVec2 val);
+    void           (*PushStyleVar_Float)(ImGuiStyleVar idx, float val);
+    void           (*PushStyleVar_Vec2)(ImGuiStyleVar idx, const ImVec2 val);
     void           (*PopStyleVar)(int count);
-    const ImVec4*  (*GetStyleColorVec4)(ImGuiCol idx);
-    ImFont*        (*GetFont)(void);
-    float          (*GetFontSize)(void);
-    void           (*GetFontTexUvWhitePixel)(ImVec2 *pOut);
-    ImU32          (*GetColorU32Col)(ImGuiCol idx, float alpha_mul);
-    ImU32          (*GetColorU32Vec4)(const ImVec4 col);
-    ImU32          (*GetColorU32U32)(ImU32 col);
+    void           (*PushAllowKeyboardFocus)(bool allow_keyboard_focus);
+    void           (*PopAllowKeyboardFocus)(void);
+    void           (*PushButtonRepeat)(bool repeat);
+    void           (*PopButtonRepeat)(void);
     void           (*PushItemWidth)(float item_width);
     void           (*PopItemWidth)(void);
     void           (*SetNextItemWidth)(float item_width);
     float          (*CalcItemWidth)(void);
     void           (*PushTextWrapPos)(float wrap_local_pos_x);
     void           (*PopTextWrapPos)(void);
-    void           (*PushAllowKeyboardFocus)(bool allow_keyboard_focus);
-    void           (*PopAllowKeyboardFocus)(void);
-    void           (*PushButtonRepeat)(bool repeat);
-    void           (*PopButtonRepeat)(void);
+    ImFont*        (*GetFont)(void);
+    float          (*GetFontSize)(void);
+    void           (*GetFontTexUvWhitePixel)(ImVec2 *pOut);
+    ImU32          (*GetColorU32_Col)(ImGuiCol idx, float alpha_mul);
+    ImU32          (*GetColorU32_Vec4)(const ImVec4 col);
+    ImU32          (*GetColorU32_U32)(ImU32 col);
+    const ImVec4*  (*GetStyleColorVec4)(ImGuiCol idx);
     void           (*Separator)(void);
     void           (*SameLine)(float offset_from_start_x, float spacing);
     void           (*NewLine)(void);
@@ -2073,14 +2588,14 @@ typedef struct rizz_api_imgui
     float          (*GetTextLineHeightWithSpacing)(void);
     float          (*GetFrameHeight)(void);
     float          (*GetFrameHeightWithSpacing)(void);
-    void           (*PushIDStr)(const char *str_id);
-    void           (*PushIDStrStr)(const char *str_id_begin, const char *str_id_end);
-    void           (*PushIDPtr)(const void *ptr_id);
-    void           (*PushIDInt)(int int_id);
+    void           (*PushID_Str)(const char *str_id);
+    void           (*PushID_StrStr)(const char *str_id_begin, const char *str_id_end);
+    void           (*PushID_Ptr)(const void *ptr_id);
+    void           (*PushID_Int)(int int_id);
     void           (*PopID)(void);
-    ImGuiID        (*GetIDStr)(const char *str_id);
-    ImGuiID        (*GetIDStrStr)(const char *str_id_begin, const char *str_id_end);
-    ImGuiID        (*GetIDPtr)(const void *ptr_id);
+    ImGuiID        (*GetID_Str)(const char *str_id);
+    ImGuiID        (*GetID_StrStr)(const char *str_id_begin, const char *str_id_end);
+    ImGuiID        (*GetID_Ptr)(const void *ptr_id);
     void           (*TextUnformatted)(const char *text, const char *text_end);
     void           (*Text)(const char *fmt, ...);
     void           (*TextV)(const char *fmt, va_list args);
@@ -2096,47 +2611,48 @@ typedef struct rizz_api_imgui
     void           (*BulletTextV)(const char *fmt, va_list args);
     bool           (*Button)(const char *label, const ImVec2 size);
     bool           (*SmallButton)(const char *label);
-    bool           (*InvisibleButton)(const char *str_id, const ImVec2 size);
+    bool           (*InvisibleButton)(const char *str_id, const ImVec2 size, ImGuiButtonFlags flags);
     bool           (*ArrowButton)(const char *str_id, ImGuiDir dir);
     void           (*Image)(ImTextureID user_texture_id, const ImVec2 size, const ImVec2 uv0, const ImVec2 uv1, const ImVec4 tint_col, const ImVec4 border_col);
     bool           (*ImageButton)(ImTextureID user_texture_id, const ImVec2 size, const ImVec2 uv0, const ImVec2 uv1, int frame_padding, const ImVec4 bg_col, const ImVec4 tint_col);
     bool           (*Checkbox)(const char *label, bool *v);
-    bool           (*CheckboxFlags)(const char *label, unsigned int *flags, unsigned int flags_value);
-    bool           (*RadioButtonBool)(const char *label, bool active);
-    bool           (*RadioButtonIntPtr)(const char *label, int *v, int v_button);
+    bool           (*CheckboxFlags_IntPtr)(const char *label, int *flags, int flags_value);
+    bool           (*CheckboxFlags_UintPtr)(const char *label, unsigned int *flags, unsigned int flags_value);
+    bool           (*RadioButton_Bool)(const char *label, bool active);
+    bool           (*RadioButton_IntPtr)(const char *label, int *v, int v_button);
     void           (*ProgressBar)(float fraction, const ImVec2 size_arg, const char *overlay);
     void           (*Bullet)(void);
     bool           (*BeginCombo)(const char *label, const char *preview_value, ImGuiComboFlags flags);
     void           (*EndCombo)(void);
-    bool           (*ComboStr_arr)(const char *label, int *current_item, const char * const items[], int items_count, int popup_max_height_in_items);
-    bool           (*ComboStr)(const char *label, int *current_item, const char *items_separated_by_zeros, int popup_max_height_in_items);
-    bool           (*ComboFnPtr)(const char *label, int *current_item, bool (*items_getter)(void *data, int idx, const char **out_text), void *data, int items_count, int popup_max_height_in_items);
-    bool           (*DragFloat)(const char *label, float *v, float v_speed, float v_min, float v_max, const char *format, float power);
-    bool           (*DragFloat2)(const char *label, float v[2], float v_speed, float v_min, float v_max, const char *format, float power);
-    bool           (*DragFloat3)(const char *label, float v[3], float v_speed, float v_min, float v_max, const char *format, float power);
-    bool           (*DragFloat4)(const char *label, float v[4], float v_speed, float v_min, float v_max, const char *format, float power);
-    bool           (*DragFloatRange2)(const char *label, float *v_current_min, float *v_current_max, float v_speed, float v_min, float v_max, const char *format, const char *format_max, float power);
-    bool           (*DragInt)(const char *label, int *v, float v_speed, int v_min, int v_max, const char *format);
-    bool           (*DragInt2)(const char *label, int v[2], float v_speed, int v_min, int v_max, const char *format);
-    bool           (*DragInt3)(const char *label, int v[3], float v_speed, int v_min, int v_max, const char *format);
-    bool           (*DragInt4)(const char *label, int v[4], float v_speed, int v_min, int v_max, const char *format);
-    bool           (*DragIntRange2)(const char *label, int *v_current_min, int *v_current_max, float v_speed, int v_min, int v_max, const char *format, const char *format_max);
-    bool           (*DragScalar)(const char *label, ImGuiDataType data_type, void *p_data, float v_speed, const void *p_min, const void *p_max, const char *format, float power);
-    bool           (*DragScalarN)(const char *label, ImGuiDataType data_type, void *p_data, int components, float v_speed, const void *p_min, const void *p_max, const char *format, float power);
-    bool           (*SliderFloat)(const char *label, float *v, float v_min, float v_max, const char *format, float power);
-    bool           (*SliderFloat2)(const char *label, float v[2], float v_min, float v_max, const char *format, float power);
-    bool           (*SliderFloat3)(const char *label, float v[3], float v_min, float v_max, const char *format, float power);
-    bool           (*SliderFloat4)(const char *label, float v[4], float v_min, float v_max, const char *format, float power);
-    bool           (*SliderAngle)(const char *label, float *v_rad, float v_degrees_min, float v_degrees_max, const char *format);
-    bool           (*SliderInt)(const char *label, int *v, int v_min, int v_max, const char *format);
-    bool           (*SliderInt2)(const char *label, int v[2], int v_min, int v_max, const char *format);
-    bool           (*SliderInt3)(const char *label, int v[3], int v_min, int v_max, const char *format);
-    bool           (*SliderInt4)(const char *label, int v[4], int v_min, int v_max, const char *format);
-    bool           (*SliderScalar)(const char *label, ImGuiDataType data_type, void *p_data, const void *p_min, const void *p_max, const char *format, float power);
-    bool           (*SliderScalarN)(const char *label, ImGuiDataType data_type, void *p_data, int components, const void *p_min, const void *p_max, const char *format, float power);
-    bool           (*VSliderFloat)(const char *label, const ImVec2 size, float *v, float v_min, float v_max, const char *format, float power);
-    bool           (*VSliderInt)(const char *label, const ImVec2 size, int *v, int v_min, int v_max, const char *format);
-    bool           (*VSliderScalar)(const char *label, const ImVec2 size, ImGuiDataType data_type, void *p_data, const void *p_min, const void *p_max, const char *format, float power);
+    bool           (*Combo_Str_arr)(const char *label, int *current_item, const char * const items[], int items_count, int popup_max_height_in_items);
+    bool           (*Combo_Str)(const char *label, int *current_item, const char *items_separated_by_zeros, int popup_max_height_in_items);
+    bool           (*Combo_FnBoolPtr)(const char *label, int *current_item, bool (*items_getter)(void *data, int idx, const char **out_text), void *data, int items_count, int popup_max_height_in_items);
+    bool           (*DragFloat)(const char *label, float *v, float v_speed, float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragFloat2)(const char *label, float v[2], float v_speed, float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragFloat3)(const char *label, float v[3], float v_speed, float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragFloat4)(const char *label, float v[4], float v_speed, float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragFloatRange2)(const char *label, float *v_current_min, float *v_current_max, float v_speed, float v_min, float v_max, const char *format, const char *format_max, ImGuiSliderFlags flags);
+    bool           (*DragInt)(const char *label, int *v, float v_speed, int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragInt2)(const char *label, int v[2], float v_speed, int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragInt3)(const char *label, int v[3], float v_speed, int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragInt4)(const char *label, int v[4], float v_speed, int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragIntRange2)(const char *label, int *v_current_min, int *v_current_max, float v_speed, int v_min, int v_max, const char *format, const char *format_max, ImGuiSliderFlags flags);
+    bool           (*DragScalar)(const char *label, ImGuiDataType data_type, void *p_data, float v_speed, const void *p_min, const void *p_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*DragScalarN)(const char *label, ImGuiDataType data_type, void *p_data, int components, float v_speed, const void *p_min, const void *p_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderFloat)(const char *label, float *v, float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderFloat2)(const char *label, float v[2], float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderFloat3)(const char *label, float v[3], float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderFloat4)(const char *label, float v[4], float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderAngle)(const char *label, float *v_rad, float v_degrees_min, float v_degrees_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderInt)(const char *label, int *v, int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderInt2)(const char *label, int v[2], int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderInt3)(const char *label, int v[3], int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderInt4)(const char *label, int v[4], int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderScalar)(const char *label, ImGuiDataType data_type, void *p_data, const void *p_min, const void *p_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderScalarN)(const char *label, ImGuiDataType data_type, void *p_data, int components, const void *p_min, const void *p_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*VSliderFloat)(const char *label, const ImVec2 size, float *v, float v_min, float v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*VSliderInt)(const char *label, const ImVec2 size, int *v, int v_min, int v_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*VSliderScalar)(const char *label, const ImVec2 size, ImGuiDataType data_type, void *p_data, const void *p_min, const void *p_max, const char *format, ImGuiSliderFlags flags);
     bool           (*InputText)(const char *label, char *buf, size_t buf_size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data);
     bool           (*InputTextMultiline)(const char *label, char *buf, size_t buf_size, const ImVec2 size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data);
     bool           (*InputTextWithHint)(const char *label, const char *hint, char *buf, size_t buf_size, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data);
@@ -2157,60 +2673,75 @@ typedef struct rizz_api_imgui
     bool           (*ColorPicker4)(const char *label, float col[4], ImGuiColorEditFlags flags, const float *ref_col);
     bool           (*ColorButton)(const char *desc_id, const ImVec4 col, ImGuiColorEditFlags flags, ImVec2 size);
     void           (*SetColorEditOptions)(ImGuiColorEditFlags flags);
-    bool           (*TreeNodeStr)(const char *label);
-    bool           (*TreeNodeStrStr)(const char *str_id, const char *fmt, ...);
-    bool           (*TreeNodePtr)(const void *ptr_id, const char *fmt, ...);
-    bool           (*TreeNodeVStr)(const char *str_id, const char *fmt, va_list args);
-    bool           (*TreeNodeVPtr)(const void *ptr_id, const char *fmt, va_list args);
-    bool           (*TreeNodeExStr)(const char *label, ImGuiTreeNodeFlags flags);
-    bool           (*TreeNodeExStrStr)(const char *str_id, ImGuiTreeNodeFlags flags, const char *fmt, ...);
-    bool           (*TreeNodeExPtr)(const void *ptr_id, ImGuiTreeNodeFlags flags, const char *fmt, ...);
-    bool           (*TreeNodeExVStr)(const char *str_id, ImGuiTreeNodeFlags flags, const char *fmt, va_list args);
-    bool           (*TreeNodeExVPtr)(const void *ptr_id, ImGuiTreeNodeFlags flags, const char *fmt, va_list args);
-    void           (*TreePushStr)(const char *str_id);
-    void           (*TreePushPtr)(const void *ptr_id);
+    bool           (*TreeNode_Str)(const char *label);
+    bool           (*TreeNode_StrStr)(const char *str_id, const char *fmt, ...);
+    bool           (*TreeNode_Ptr)(const void *ptr_id, const char *fmt, ...);
+    bool           (*TreeNodeV_Str)(const char *str_id, const char *fmt, va_list args);
+    bool           (*TreeNodeV_Ptr)(const void *ptr_id, const char *fmt, va_list args);
+    bool           (*TreeNodeEx_Str)(const char *label, ImGuiTreeNodeFlags flags);
+    bool           (*TreeNodeEx_StrStr)(const char *str_id, ImGuiTreeNodeFlags flags, const char *fmt, ...);
+    bool           (*TreeNodeEx_Ptr)(const void *ptr_id, ImGuiTreeNodeFlags flags, const char *fmt, ...);
+    bool           (*TreeNodeExV_Str)(const char *str_id, ImGuiTreeNodeFlags flags, const char *fmt, va_list args);
+    bool           (*TreeNodeExV_Ptr)(const void *ptr_id, ImGuiTreeNodeFlags flags, const char *fmt, va_list args);
+    void           (*TreePush_Str)(const char *str_id);
+    void           (*TreePush_Ptr)(const void *ptr_id);
     void           (*TreePop)(void);
     float          (*GetTreeNodeToLabelSpacing)(void);
-    bool           (*CollapsingHeaderTreeNodeFlags)(const char *label, ImGuiTreeNodeFlags flags);
-    bool           (*CollapsingHeaderBoolPtr)(const char *label, bool *p_open, ImGuiTreeNodeFlags flags);
+    bool           (*CollapsingHeader_TreeNodeFlags)(const char *label, ImGuiTreeNodeFlags flags);
+    bool           (*CollapsingHeader_BoolPtr)(const char *label, bool *p_visible, ImGuiTreeNodeFlags flags);
     void           (*SetNextItemOpen)(bool is_open, ImGuiCond cond);
-    bool           (*SelectableBool)(const char *label, bool selected, ImGuiSelectableFlags flags, const ImVec2 size);
-    bool           (*SelectableBoolPtr)(const char *label, bool *p_selected, ImGuiSelectableFlags flags, const ImVec2 size);
-    bool           (*ListBoxStr_arr)(const char *label, int *current_item, const char * const items[], int items_count, int height_in_items);
-    bool           (*ListBoxFnPtr)(const char *label, int *current_item, bool (*items_getter)(void *data, int idx, const char **out_text), void *data, int items_count, int height_in_items);
-    bool           (*ListBoxHeaderVec2)(const char *label, const ImVec2 size);
-    bool           (*ListBoxHeaderInt)(const char *label, int items_count, int height_in_items);
-    void           (*ListBoxFooter)(void);
-    void           (*PlotLinesFloatPtr)(const char *label, const float *values, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size, int stride);
-    void           (*PlotLinesFnPtr)(const char *label, float (*values_getter)(void *data, int idx), void *data, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size);
-    void           (*PlotHistogramFloatPtr)(const char *label, const float *values, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size, int stride);
-    void           (*PlotHistogramFnPtr)(const char *label, float (*values_getter)(void *data, int idx), void *data, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size);
-    void           (*ValueBool)(const char *prefix, bool b);
-    void           (*ValueInt)(const char *prefix, int v);
-    void           (*ValueUint)(const char *prefix, unsigned int v);
-    void           (*ValueFloat)(const char *prefix, float v, const char *float_format);
+    bool           (*Selectable_Bool)(const char *label, bool selected, ImGuiSelectableFlags flags, const ImVec2 size);
+    bool           (*Selectable_BoolPtr)(const char *label, bool *p_selected, ImGuiSelectableFlags flags, const ImVec2 size);
+    bool           (*BeginListBox)(const char *label, const ImVec2 size);
+    void           (*EndListBox)(void);
+    bool           (*ListBox_Str_arr)(const char *label, int *current_item, const char * const items[], int items_count, int height_in_items);
+    bool           (*ListBox_FnBoolPtr)(const char *label, int *current_item, bool (*items_getter)(void *data, int idx, const char **out_text), void *data, int items_count, int height_in_items);
+    void           (*PlotLines_FloatPtr)(const char *label, const float *values, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size, int stride);
+    void           (*PlotLines_FnFloatPtr)(const char *label, float (*values_getter)(void *data, int idx), void *data, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size);
+    void           (*PlotHistogram_FloatPtr)(const char *label, const float *values, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size, int stride);
+    void           (*PlotHistogram_FnFloatPtr)(const char *label, float (*values_getter)(void *data, int idx), void *data, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 graph_size);
+    void           (*Value_Bool)(const char *prefix, bool b);
+    void           (*Value_Int)(const char *prefix, int v);
+    void           (*Value_Uint)(const char *prefix, unsigned int v);
+    void           (*Value_Float)(const char *prefix, float v, const char *float_format);
     bool           (*BeginMenuBar)(void);
     void           (*EndMenuBar)(void);
     bool           (*BeginMainMenuBar)(void);
     void           (*EndMainMenuBar)(void);
     bool           (*BeginMenu)(const char *label, bool enabled);
     void           (*EndMenu)(void);
-    bool           (*MenuItemBool)(const char *label, const char *shortcut, bool selected, bool enabled);
-    bool           (*MenuItemBoolPtr)(const char *label, const char *shortcut, bool *p_selected, bool enabled);
+    bool           (*MenuItem_Bool)(const char *label, const char *shortcut, bool selected, bool enabled);
+    bool           (*MenuItem_BoolPtr)(const char *label, const char *shortcut, bool *p_selected, bool enabled);
     void           (*BeginTooltip)(void);
     void           (*EndTooltip)(void);
     void           (*SetTooltip)(const char *fmt, ...);
     void           (*SetTooltipV)(const char *fmt, va_list args);
-    void           (*OpenPopup)(const char *str_id);
     bool           (*BeginPopup)(const char *str_id, ImGuiWindowFlags flags);
-    bool           (*BeginPopupContextItem)(const char *str_id, ImGuiMouseButton mouse_button);
-    bool           (*BeginPopupContextWindow)(const char *str_id, ImGuiMouseButton mouse_button, bool also_over_items);
-    bool           (*BeginPopupContextVoid)(const char *str_id, ImGuiMouseButton mouse_button);
     bool           (*BeginPopupModal)(const char *name, bool *p_open, ImGuiWindowFlags flags);
     void           (*EndPopup)(void);
-    bool           (*OpenPopupOnItemClick)(const char *str_id, ImGuiMouseButton mouse_button);
-    bool           (*IsPopupOpenStr)(const char *str_id);
+    void           (*OpenPopup)(const char *str_id, ImGuiPopupFlags popup_flags);
+    void           (*OpenPopupOnItemClick)(const char *str_id, ImGuiPopupFlags popup_flags);
     void           (*CloseCurrentPopup)(void);
+    bool           (*BeginPopupContextItem)(const char *str_id, ImGuiPopupFlags popup_flags);
+    bool           (*BeginPopupContextWindow)(const char *str_id, ImGuiPopupFlags popup_flags);
+    bool           (*BeginPopupContextVoid)(const char *str_id, ImGuiPopupFlags popup_flags);
+    bool           (*IsPopupOpen_Str)(const char *str_id, ImGuiPopupFlags flags);
+    bool           (*BeginTable)(const char *str_id, int column, ImGuiTableFlags flags, const ImVec2 outer_size, float inner_width);
+    void           (*EndTable)(void);
+    void           (*TableNextRow)(ImGuiTableRowFlags row_flags, float min_row_height);
+    bool           (*TableNextColumn)(void);
+    bool           (*TableSetColumnIndex)(int column_n);
+    void           (*TableSetupColumn)(const char *label, ImGuiTableColumnFlags flags, float init_width_or_weight, ImGuiID user_id);
+    void           (*TableSetupScrollFreeze)(int cols, int rows);
+    void           (*TableHeadersRow)(void);
+    void           (*TableHeader)(const char *label);
+    ImGuiTableSortSpecs*  (*TableGetSortSpecs)(void);
+    int            (*TableGetColumnCount)(void);
+    int            (*TableGetColumnIndex)(void);
+    int            (*TableGetRowIndex)(void);
+    const char*    (*TableGetColumnName_Int)(int column_n);
+    ImGuiTableColumnFlags  (*TableGetColumnFlags)(int column_n);
+    void           (*TableSetBgColor)(ImGuiTableBgTarget target, ImU32 color, int column_n);
     void           (*Columns)(int count, const char *id, bool border);
     void           (*NextColumn)(void);
     int            (*GetColumnIndex)(void);
@@ -2223,9 +2754,10 @@ typedef struct rizz_api_imgui
     void           (*EndTabBar)(void);
     bool           (*BeginTabItem)(const char *label, bool *p_open, ImGuiTabItemFlags flags);
     void           (*EndTabItem)(void);
+    bool           (*TabItemButton)(const char *label, ImGuiTabItemFlags flags);
     void           (*SetTabItemClosed)(const char *tab_or_docked_window_label);
     void           (*DockSpace)(ImGuiID id, const ImVec2 size, ImGuiDockNodeFlags flags, const ImGuiWindowClass *window_class);
-    ImGuiID        (*DockSpaceOverViewport)(ImGuiViewport *viewport, ImGuiDockNodeFlags flags, const ImGuiWindowClass *window_class);
+    ImGuiID        (*DockSpaceOverViewport)(const ImGuiViewport *viewport, ImGuiDockNodeFlags flags, const ImGuiWindowClass *window_class);
     void           (*SetNextWindowDockID)(ImGuiID dock_id, ImGuiCond cond);
     void           (*SetNextWindowClass)(const ImGuiWindowClass *window_class);
     ImGuiID        (*GetWindowDockID)(void);
@@ -2235,6 +2767,7 @@ typedef struct rizz_api_imgui
     void           (*LogToClipboard)(int auto_open_depth);
     void           (*LogFinish)(void);
     void           (*LogButtons)(void);
+    void           (*LogTextV)(const char *fmt, va_list args);
     bool           (*BeginDragDropSource)(ImGuiDragDropFlags flags);
     bool           (*SetDragDropPayload)(const char *type, const void *data, size_t sz, ImGuiCond cond);
     void           (*EndDragDropSource)(void);
@@ -2263,14 +2796,15 @@ typedef struct rizz_api_imgui
     void           (*GetItemRectMax)(ImVec2 *pOut);
     void           (*GetItemRectSize)(ImVec2 *pOut);
     void           (*SetItemAllowOverlap)(void);
-    bool           (*IsRectVisibleNil)(const ImVec2 size);
-    bool           (*IsRectVisibleVec2)(const ImVec2 rect_min, const ImVec2 rect_max);
+    ImGuiViewport*  (*GetMainViewport)(void);
+    bool           (*IsRectVisible_Nil)(const ImVec2 size);
+    bool           (*IsRectVisible_Vec2)(const ImVec2 rect_min, const ImVec2 rect_max);
     double         (*GetTime)(void);
     int            (*GetFrameCount)(void);
-    ImDrawList*    (*GetBackgroundDrawListNil)(void);
-    ImDrawList*    (*GetForegroundDrawListNil)(void);
-    ImDrawList*    (*GetBackgroundDrawListViewportPtr)(ImGuiViewport *viewport);
-    ImDrawList*    (*GetForegroundDrawListViewportPtr)(ImGuiViewport *viewport);
+    ImDrawList*    (*GetBackgroundDrawList_Nil)(void);
+    ImDrawList*    (*GetForegroundDrawList_Nil)(void);
+    ImDrawList*    (*GetBackgroundDrawList_ViewportPtr)(ImGuiViewport *viewport);
+    ImDrawList*    (*GetForegroundDrawList_ViewportPtr)(ImGuiViewport *viewport);
     ImDrawListSharedData*  (*GetDrawListSharedData)(void);
     const char*    (*GetStyleColorName)(ImGuiCol idx);
     void           (*SetStateStorage)(ImGuiStorage *storage);
@@ -2281,6 +2815,8 @@ typedef struct rizz_api_imgui
     void           (*CalcTextSize)(ImVec2 *pOut, const char *text, const char *text_end, bool hide_text_after_double_hash, float wrap_width);
     void           (*ColorConvertU32ToFloat4)(ImVec4 *pOut, ImU32 in);
     ImU32          (*ColorConvertFloat4ToU32)(const ImVec4 in);
+    void           (*ColorConvertRGBtoHSV)(float r, float g, float b, float *out_h, float *out_s, float *out_v);
+    void           (*ColorConvertHSVtoRGB)(float h, float s, float v, float *out_r, float *out_g, float *out_b);
     int            (*GetKeyIndex)(ImGuiKey imgui_key);
     bool           (*IsKeyDown)(int user_key_index);
     bool           (*IsKeyPressed)(int user_key_index, bool repeat);
@@ -2309,20 +2845,21 @@ typedef struct rizz_api_imgui
     void           (*SaveIniSettingsToDisk)(const char *ini_filename);
     const char*    (*SaveIniSettingsToMemory)(size_t *out_ini_size);
     bool           (*DebugCheckVersionAndDataLayout)(const char *version_str, size_t sz_io, size_t sz_style, size_t sz_vec2, size_t sz_vec4, size_t sz_drawvert, size_t sz_drawidx);
-    void           (*SetAllocatorFunctions)(void *(*alloc_func)(size_t sz, void *user_data), void (*free_func)(void *ptr, void *user_data), void *user_data);
+    void           (*SetAllocatorFunctions)(ImGuiMemAllocFunc alloc_func, ImGuiMemFreeFunc free_func, void *user_data);
+    void           (*GetAllocatorFunctions)(ImGuiMemAllocFunc *p_alloc_func, ImGuiMemFreeFunc *p_free_func, void **p_user_data);
     void*          (*MemAlloc)(size_t size);
     void           (*MemFree)(void *ptr);
     ImGuiPlatformIO*  (*GetPlatformIO)(void);
-    ImGuiViewport*  (*GetMainViewport)(void);
     void           (*UpdatePlatformWindows)(void);
     void           (*RenderPlatformWindowsDefault)(void *platform_render_arg, void *renderer_render_arg);
     void           (*DestroyPlatformWindows)(void);
     ImGuiViewport*  (*FindViewportByID)(ImGuiID id);
     ImGuiViewport*  (*FindViewportByPlatformHandle)(void *platform_handle);
-    ImU32          (*ImHashData)(const void *data, size_t data_size, ImU32 seed);
-    ImU32          (*ImHashStr)(const char *data, size_t data_size, ImU32 seed);
+    ImGuiID        (*ImHashData)(const void *data, size_t data_size, ImU32 seed);
+    ImGuiID        (*ImHashStr)(const char *data, size_t data_size, ImU32 seed);
     ImU32          (*ImAlphaBlendColors)(ImU32 col_a, ImU32 col_b);
-    bool           (*ImIsPowerOfTwo)(int v);
+    bool           (*ImIsPowerOfTwo_Int)(int v);
+    bool           (*ImIsPowerOfTwo_U64)(ImU64 v);
     int            (*ImUpperPowerOfTwo)(int v);
     int            (*ImStricmp)(const char *str1, const char *str2);
     int            (*ImStrnicmp)(const char *str1, const char *str2, size_t count);
@@ -2356,32 +2893,39 @@ typedef struct rizz_api_imgui
     ImU64          (*ImFileRead)(void *data, ImU64 size, ImU64 count, ImFileHandle file);
     ImU64          (*ImFileWrite)(const void *data, ImU64 size, ImU64 count, ImFileHandle file);
     void*          (*ImFileLoadToMemory)(const char *filename, const char *mode, size_t *out_file_size, int padding_bytes);
-    float          (*ImPowFloat)(float x, float y);
-    double         (*ImPowdouble)(double x, double y);
+    float          (*ImPow_Float)(float x, float y);
+    double         (*ImPow_double)(double x, double y);
+    float          (*ImLog_Float)(float x);
+    double         (*ImLog_double)(double x);
+    float          (*ImAbs_Float)(float x);
+    double         (*ImAbs_double)(double x);
+    float          (*ImSign_Float)(float x);
+    double         (*ImSign_double)(double x);
     void           (*ImMin)(ImVec2 *pOut, const ImVec2 lhs, const ImVec2 rhs);
     void           (*ImMax)(ImVec2 *pOut, const ImVec2 lhs, const ImVec2 rhs);
     void           (*ImClamp)(ImVec2 *pOut, const ImVec2 v, const ImVec2 mn, ImVec2 mx);
-    void           (*ImLerpVec2Float)(ImVec2 *pOut, const ImVec2 a, const ImVec2 b, float t);
-    void           (*ImLerpVec2Vec2)(ImVec2 *pOut, const ImVec2 a, const ImVec2 b, const ImVec2 t);
-    void           (*ImLerpVec4)(ImVec4 *pOut, const ImVec4 a, const ImVec4 b, float t);
+    void           (*ImLerp_Vec2Float)(ImVec2 *pOut, const ImVec2 a, const ImVec2 b, float t);
+    void           (*ImLerp_Vec2Vec2)(ImVec2 *pOut, const ImVec2 a, const ImVec2 b, const ImVec2 t);
+    void           (*ImLerp_Vec4)(ImVec4 *pOut, const ImVec4 a, const ImVec4 b, float t);
     float          (*ImSaturate)(float f);
-    float          (*ImLengthSqrVec2)(const ImVec2 lhs);
-    float          (*ImLengthSqrVec4)(const ImVec4 lhs);
+    float          (*ImLengthSqr_Vec2)(const ImVec2 lhs);
+    float          (*ImLengthSqr_Vec4)(const ImVec4 lhs);
     float          (*ImInvLength)(const ImVec2 lhs, float fail_value);
-    float          (*ImFloorFloat)(float f);
-    void           (*ImFloorVec2)(ImVec2 *pOut, const ImVec2 v);
+    float          (*ImFloor_Float)(float f);
+    void           (*ImFloor_Vec2)(ImVec2 *pOut, const ImVec2 v);
     int            (*ImModPositive)(int a, int b);
     float          (*ImDot)(const ImVec2 a, const ImVec2 b);
     void           (*ImRotate)(ImVec2 *pOut, const ImVec2 v, float cos_a, float sin_a);
     float          (*ImLinearSweep)(float current, float target, float speed);
     void           (*ImMul)(ImVec2 *pOut, const ImVec2 lhs, const ImVec2 rhs);
-    void           (*ImBezierCalc)(ImVec2 *pOut, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, float t);
-    void           (*ImBezierClosestPoint)(ImVec2 *pOut, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, const ImVec2 p, int num_segments);
-    void           (*ImBezierClosestPointCasteljau)(ImVec2 *pOut, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, const ImVec2 p, float tess_tol);
+    void           (*ImBezierCubicCalc)(ImVec2 *pOut, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, float t);
+    void           (*ImBezierCubicClosestPoint)(ImVec2 *pOut, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, const ImVec2 p, int num_segments);
+    void           (*ImBezierCubicClosestPointCasteljau)(ImVec2 *pOut, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, const ImVec2 p, float tess_tol);
+    void           (*ImBezierQuadraticCalc)(ImVec2 *pOut, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, float t);
     void           (*ImLineClosestPoint)(ImVec2 *pOut, const ImVec2 a, const ImVec2 b, const ImVec2 p);
     bool           (*ImTriangleContainsPoint)(const ImVec2 a, const ImVec2 b, const ImVec2 c, const ImVec2 p);
     void           (*ImTriangleClosestPoint)(ImVec2 *pOut, const ImVec2 a, const ImVec2 b, const ImVec2 c, const ImVec2 p);
-    void           (*ImTriangleBarycentricCoords)(const ImVec2 a, const ImVec2 b, const ImVec2 c, const ImVec2 p, float out_u, float out_v, float out_w);
+    void           (*ImTriangleBarycentricCoords)(const ImVec2 a, const ImVec2 b, const ImVec2 c, const ImVec2 p, float *out_u, float *out_v, float *out_w);
     float          (*ImTriangleArea)(const ImVec2 a, const ImVec2 b, const ImVec2 c);
     ImGuiDir       (*ImGetDirQuadrantFromDelta)(float dx, float dy);
     bool           (*ImBitArrayTestBit)(const ImU32 *arr, int n);
@@ -2393,13 +2937,15 @@ typedef struct rizz_api_imgui
     ImGuiWindow*   (*FindWindowByID)(ImGuiID id);
     ImGuiWindow*   (*FindWindowByName)(const char *name);
     void           (*UpdateWindowParentAndRootLinks)(ImGuiWindow *window, ImGuiWindowFlags flags, ImGuiWindow *parent_window);
-    void           (*CalcWindowExpectedSize)(ImVec2 *pOut, ImGuiWindow *window);
+    void           (*CalcWindowNextAutoFitSize)(ImVec2 *pOut, ImGuiWindow *window);
     bool           (*IsWindowChildOf)(ImGuiWindow *window, ImGuiWindow *potential_parent);
+    bool           (*IsWindowAbove)(ImGuiWindow *potential_above, ImGuiWindow *potential_below);
     bool           (*IsWindowNavFocusable)(ImGuiWindow *window);
     void           (*GetWindowAllowedExtentRect)(ImRect *pOut, ImGuiWindow *window);
-    void           (*SetWindowPosWindowPtr)(ImGuiWindow *window, const ImVec2 pos, ImGuiCond cond);
-    void           (*SetWindowSizeWindowPtr)(ImGuiWindow *window, const ImVec2 size, ImGuiCond cond);
-    void           (*SetWindowCollapsedWindowPtr)(ImGuiWindow *window, bool collapsed, ImGuiCond cond);
+    void           (*SetWindowPos_WindowPtr)(ImGuiWindow *window, const ImVec2 pos, ImGuiCond cond);
+    void           (*SetWindowSize_WindowPtr)(ImGuiWindow *window, const ImVec2 size, ImGuiCond cond);
+    void           (*SetWindowCollapsed_WindowPtr)(ImGuiWindow *window, bool collapsed, ImGuiCond cond);
+    void           (*SetWindowHitTestHole)(ImGuiWindow *window, const ImVec2 pos, const ImVec2 size);
     void           (*FocusWindow)(ImGuiWindow *window);
     void           (*FocusTopMostWindowUnderOne)(ImGuiWindow *under_this_window, ImGuiWindow *ignore_window);
     void           (*BringWindowToFocusFront)(ImGuiWindow *window);
@@ -2407,7 +2953,7 @@ typedef struct rizz_api_imgui
     void           (*BringWindowToDisplayBack)(ImGuiWindow *window);
     void           (*SetCurrentFont)(ImFont *font);
     ImFont*        (*GetDefaultFont)(void);
-    ImDrawList*    (*GetForegroundDrawListWindowPtr)(ImGuiWindow *window);
+    ImDrawList*    (*GetForegroundDrawList_WindowPtr)(ImGuiWindow *window);
     void           (*Initialize)(ImGuiContext *context);
     void           (*Shutdown)(ImGuiContext *context);
     void           (*UpdateHoveredWindowAndCaptureFlags)(void);
@@ -2415,26 +2961,31 @@ typedef struct rizz_api_imgui
     void           (*StartMouseMovingWindowOrNode)(ImGuiWindow *window, ImGuiDockNode *node, bool undock_floating_node);
     void           (*UpdateMouseMovingWindowNewFrame)(void);
     void           (*UpdateMouseMovingWindowEndFrame)(void);
+    ImGuiID        (*AddContextHook)(ImGuiContext *context, const ImGuiContextHook *hook);
+    void           (*RemoveContextHook)(ImGuiContext *context, ImGuiID hook_to_remove);
+    void           (*CallContextHooks)(ImGuiContext *context, ImGuiContextHookType type);
     void           (*TranslateWindowsInViewport)(ImGuiViewportP *viewport, const ImVec2 old_pos, const ImVec2 new_pos);
     void           (*ScaleWindowsInViewport)(ImGuiViewportP *viewport, float scale);
     void           (*DestroyPlatformWindow)(ImGuiViewportP *viewport);
-    void           (*ShowViewportThumbnails)(void);
-    void           (*MarkIniSettingsDirtyNil)(void);
-    void           (*MarkIniSettingsDirtyWindowPtr)(ImGuiWindow *window);
+    const ImGuiPlatformMonitor*  (*GetViewportPlatformMonitor)(ImGuiViewport *viewport);
+    void           (*MarkIniSettingsDirty_Nil)(void);
+    void           (*MarkIniSettingsDirty_WindowPtr)(ImGuiWindow *window);
+    void           (*ClearIniSettings)(void);
     ImGuiWindowSettings*  (*CreateNewWindowSettings)(const char *name);
     ImGuiWindowSettings*  (*FindWindowSettings)(ImGuiID id);
     ImGuiWindowSettings*  (*FindOrCreateWindowSettings)(const char *name);
     ImGuiSettingsHandler*  (*FindSettingsHandler)(const char *type_name);
     void           (*SetNextWindowScroll)(const ImVec2 scroll);
-    void           (*SetScrollXWindowPtr)(ImGuiWindow *window, float new_scroll_x);
-    void           (*SetScrollYWindowPtr)(ImGuiWindow *window, float new_scroll_y);
-    void           (*SetScrollFromPosXWindowPtr)(ImGuiWindow *window, float local_x, float center_x_ratio);
-    void           (*SetScrollFromPosYWindowPtr)(ImGuiWindow *window, float local_y, float center_y_ratio);
+    void           (*SetScrollX_WindowPtr)(ImGuiWindow *window, float scroll_x);
+    void           (*SetScrollY_WindowPtr)(ImGuiWindow *window, float scroll_y);
+    void           (*SetScrollFromPosX_WindowPtr)(ImGuiWindow *window, float local_x, float center_x_ratio);
+    void           (*SetScrollFromPosY_WindowPtr)(ImGuiWindow *window, float local_y, float center_y_ratio);
     void           (*ScrollToBringRectIntoView)(ImVec2 *pOut, ImGuiWindow *window, const ImRect item_rect);
     ImGuiID        (*GetItemID)(void);
     ImGuiItemStatusFlags  (*GetItemStatusFlags)(void);
     ImGuiID        (*GetActiveID)(void);
     ImGuiID        (*GetFocusID)(void);
+    ImGuiItemFlags  (*GetItemsFlags)(void);
     void           (*SetActiveID)(ImGuiID id, ImGuiWindow *window);
     void           (*SetFocusID)(ImGuiID id, ImGuiWindow *window);
     void           (*ClearActiveID)(void);
@@ -2443,11 +2994,13 @@ typedef struct rizz_api_imgui
     void           (*KeepAliveID)(ImGuiID id);
     void           (*MarkItemEdited)(ImGuiID id);
     void           (*PushOverrideID)(ImGuiID id);
-    void           (*ItemSizeVec2)(const ImVec2 size, float text_baseline_y);
-    void           (*ItemSizeRect)(const ImRect bb, float text_baseline_y);
+    ImGuiID        (*GetIDWithSeed)(const char *str_id_begin, const char *str_id_end, ImGuiID seed);
+    void           (*ItemSize_Vec2)(const ImVec2 size, float text_baseline_y);
+    void           (*ItemSize_Rect)(const ImRect bb, float text_baseline_y);
     bool           (*ItemAdd)(const ImRect bb, ImGuiID id, const ImRect *nav_bb);
     bool           (*ItemHoverable)(const ImRect bb, ImGuiID id);
     bool           (*IsClippedEx)(const ImRect bb, ImGuiID id, bool clip_even_when_logged);
+    void           (*SetLastItemData)(ImGuiWindow *window, ImGuiID item_id, ImGuiItemStatusFlags status_flags, const ImRect item_rect);
     bool           (*FocusableItemRegister)(ImGuiWindow *window, ImGuiID id);
     void           (*FocusableItemUnregister)(ImGuiWindow *window);
     void           (*CalcItemSize)(ImVec2 *pOut, ImVec2 size, float default_w, float default_h);
@@ -2460,11 +3013,13 @@ typedef struct rizz_api_imgui
     void           (*ShrinkWidths)(ImGuiShrinkWidthItem *items, int count, float width_excess);
     void           (*LogBegin)(ImGuiLogType type, int auto_open_depth);
     void           (*LogToBuffer)(int auto_open_depth);
+    void           (*LogRenderedText)(const ImVec2 *ref_pos, const char *text, const char *text_end);
+    void           (*LogSetNextTextDecoration)(const char *prefix, const char *suffix);
     bool           (*BeginChildEx)(const char *name, ImGuiID id, const ImVec2 size_arg, bool border, ImGuiWindowFlags flags);
-    void           (*OpenPopupEx)(ImGuiID id);
+    void           (*OpenPopupEx)(ImGuiID id, ImGuiPopupFlags popup_flags);
     void           (*ClosePopupToLevel)(int remaining, bool restore_focus_to_window_under_popup);
     void           (*ClosePopupsOverWindow)(ImGuiWindow *ref_window, bool restore_focus_to_window_under_popup);
-    bool           (*IsPopupOpenID)(ImGuiID id);
+    bool           (*IsPopupOpen_ID)(ImGuiID id, ImGuiPopupFlags popup_flags);
     bool           (*BeginPopupEx)(ImGuiID id, ImGuiWindowFlags extra_flags);
     void           (*BeginTooltipEx)(ImGuiWindowFlags extra_flags, ImGuiTooltipFlags tooltip_flags);
     ImGuiWindow*   (*GetTopMostPopupModal)(void);
@@ -2479,11 +3034,12 @@ typedef struct rizz_api_imgui
     void           (*GetNavInputAmount2d)(ImVec2 *pOut, ImGuiNavDirSourceFlags dir_sources, ImGuiInputReadMode mode, float slow_factor, float fast_factor);
     int            (*CalcTypematicRepeatAmount)(float t0, float t1, float repeat_delay, float repeat_rate);
     void           (*ActivateItem)(ImGuiID id);
-    void           (*SetNavID)(ImGuiID id, int nav_layer, ImGuiID focus_scope_id);
-    void           (*SetNavIDWithRectRel)(ImGuiID id, int nav_layer, ImGuiID focus_scope_id, const ImRect rect_rel);
+    void           (*SetNavID)(ImGuiID id, int nav_layer, ImGuiID focus_scope_id, const ImRect rect_rel);
     void           (*PushFocusScope)(ImGuiID id);
     void           (*PopFocusScope)(void);
-    ImGuiID        (*GetFocusScopeID)(void);
+    ImGuiID        (*GetFocusedFocusScope)(void);
+    ImGuiID        (*GetFocusScope)(void);
+    void           (*SetItemUsingMouseWheel)(void);
     bool           (*IsActiveIdUsingNavDir)(ImGuiDir dir);
     bool           (*IsActiveIdUsingNavInput)(ImGuiNavInput input);
     bool           (*IsActiveIdUsingKey)(ImGuiKey key);
@@ -2494,16 +3050,19 @@ typedef struct rizz_api_imgui
     ImGuiKeyModFlags  (*GetMergedKeyModFlags)(void);
     void           (*DockContextInitialize)(ImGuiContext *ctx);
     void           (*DockContextShutdown)(ImGuiContext *ctx);
-    void           (*DockContextOnLoadSettings)(ImGuiContext *ctx);
+    void           (*DockContextClearNodes)(ImGuiContext *ctx, ImGuiID root_id, bool clear_settings_refs);
     void           (*DockContextRebuildNodes)(ImGuiContext *ctx);
-    void           (*DockContextUpdateUndocking)(ImGuiContext *ctx);
-    void           (*DockContextUpdateDocking)(ImGuiContext *ctx);
+    void           (*DockContextNewFrameUpdateUndocking)(ImGuiContext *ctx);
+    void           (*DockContextNewFrameUpdateDocking)(ImGuiContext *ctx);
     ImGuiID        (*DockContextGenNodeID)(ImGuiContext *ctx);
     void           (*DockContextQueueDock)(ImGuiContext *ctx, ImGuiWindow *target, ImGuiDockNode *target_node, ImGuiWindow *payload, ImGuiDir split_dir, float split_ratio, bool split_outer);
     void           (*DockContextQueueUndockWindow)(ImGuiContext *ctx, ImGuiWindow *window);
     void           (*DockContextQueueUndockNode)(ImGuiContext *ctx, ImGuiDockNode *node);
     bool           (*DockContextCalcDropPosForDocking)(ImGuiWindow *target, ImGuiDockNode *target_node, ImGuiWindow *payload, ImGuiDir split_dir, bool split_outer, ImVec2 *out_pos);
+    bool           (*DockNodeBeginAmendTabBar)(ImGuiDockNode *node);
+    void           (*DockNodeEndAmendTabBar)(void);
     ImGuiDockNode*  (*DockNodeGetRootNode)(ImGuiDockNode *node);
+    int            (*DockNodeGetDepth)(const ImGuiDockNode *node);
     ImGuiDockNode*  (*GetWindowDockNode)(void);
     bool           (*GetWindowAlwaysWantOwnTabBar)(ImGuiWindow *window);
     void           (*BeginDocked)(ImGuiWindow *window, bool *p_open);
@@ -2515,7 +3074,7 @@ typedef struct rizz_api_imgui
     ImGuiDockNode*  (*DockBuilderGetCentralNode)(ImGuiID node_id);
     ImGuiID        (*DockBuilderAddNode)(ImGuiID node_id, ImGuiDockNodeFlags flags);
     void           (*DockBuilderRemoveNode)(ImGuiID node_id);
-    void           (*DockBuilderRemoveNodeDockedWindows)(ImGuiID node_id, bool clear_persistent_docking_references);
+    void           (*DockBuilderRemoveNodeDockedWindows)(ImGuiID node_id, bool clear_settings_refs);
     void           (*DockBuilderRemoveNodeChildNodes)(ImGuiID node_id);
     void           (*DockBuilderSetNodePos)(ImGuiID node_id, ImVec2 pos);
     void           (*DockBuilderSetNodeSize)(ImGuiID node_id, ImVec2 size);
@@ -2527,26 +3086,73 @@ typedef struct rizz_api_imgui
     bool           (*BeginDragDropTargetCustom)(const ImRect bb, ImGuiID id);
     void           (*ClearDragDrop)(void);
     bool           (*IsDragDropPayloadBeingAccepted)(void);
-    void           (*BeginColumns)(const char *str_id, int count, ImGuiColumnsFlags flags);
+    void           (*SetWindowClipRectBeforeSetChannel)(ImGuiWindow *window, const ImRect clip_rect);
+    void           (*BeginColumns)(const char *str_id, int count, ImGuiOldColumnFlags flags);
     void           (*EndColumns)(void);
     void           (*PushColumnClipRect)(int column_index);
     void           (*PushColumnsBackground)(void);
     void           (*PopColumnsBackground)(void);
     ImGuiID        (*GetColumnsID)(const char *str_id, int count);
-    ImGuiColumns*  (*FindOrCreateColumns)(ImGuiWindow *window, ImGuiID id);
-    float          (*GetColumnOffsetFromNorm)(const ImGuiColumns *columns, float offset_norm);
-    float          (*GetColumnNormFromOffset)(const ImGuiColumns *columns, float offset);
+    ImGuiOldColumns*  (*FindOrCreateColumns)(ImGuiWindow *window, ImGuiID id);
+    float          (*GetColumnOffsetFromNorm)(const ImGuiOldColumns *columns, float offset_norm);
+    float          (*GetColumnNormFromOffset)(const ImGuiOldColumns *columns, float offset);
+    void           (*TableOpenContextMenu)(int column_n);
+    void           (*TableSetColumnEnabled)(int column_n, bool enabled);
+    void           (*TableSetColumnWidth)(int column_n, float width);
+    void           (*TableSetColumnSortDirection)(int column_n, ImGuiSortDirection sort_direction, bool append_to_sort_specs);
+    int            (*TableGetHoveredColumn)(void);
+    float          (*TableGetHeaderRowHeight)(void);
+    void           (*TablePushBackgroundChannel)(void);
+    void           (*TablePopBackgroundChannel)(void);
+    ImGuiTable*    (*GetCurrentTable)(void);
+    ImGuiTable*    (*TableFindByID)(ImGuiID id);
+    bool           (*BeginTableEx)(const char *name, ImGuiID id, int columns_count, ImGuiTableFlags flags, const ImVec2 outer_size, float inner_width);
+    void           (*TableBeginInitMemory)(ImGuiTable *table, int columns_count);
+    void           (*TableBeginApplyRequests)(ImGuiTable *table);
+    void           (*TableSetupDrawChannels)(ImGuiTable *table);
+    void           (*TableUpdateLayout)(ImGuiTable *table);
+    void           (*TableUpdateBorders)(ImGuiTable *table);
+    void           (*TableUpdateColumnsWeightFromWidth)(ImGuiTable *table);
+    void           (*TableDrawBorders)(ImGuiTable *table);
+    void           (*TableDrawContextMenu)(ImGuiTable *table);
+    void           (*TableMergeDrawChannels)(ImGuiTable *table);
+    void           (*TableSortSpecsSanitize)(ImGuiTable *table);
+    void           (*TableSortSpecsBuild)(ImGuiTable *table);
+    ImGuiSortDirection  (*TableGetColumnNextSortDirection)(ImGuiTableColumn *column);
+    void           (*TableFixColumnSortDirection)(ImGuiTable *table, ImGuiTableColumn *column);
+    float          (*TableGetColumnWidthAuto)(ImGuiTable *table, ImGuiTableColumn *column);
+    void           (*TableBeginRow)(ImGuiTable *table);
+    void           (*TableEndRow)(ImGuiTable *table);
+    void           (*TableBeginCell)(ImGuiTable *table, int column_n);
+    void           (*TableEndCell)(ImGuiTable *table);
+    void           (*TableGetCellBgRect)(ImRect *pOut, const ImGuiTable *table, int column_n);
+    const char*    (*TableGetColumnName_TablePtr)(const ImGuiTable *table, int column_n);
+    ImGuiID        (*TableGetColumnResizeID)(const ImGuiTable *table, int column_n, int instance_no);
+    float          (*TableGetMaxColumnWidth)(const ImGuiTable *table, int column_n);
+    void           (*TableSetColumnWidthAutoSingle)(ImGuiTable *table, int column_n);
+    void           (*TableSetColumnWidthAutoAll)(ImGuiTable *table);
+    void           (*TableRemove)(ImGuiTable *table);
+    void           (*TableGcCompactTransientBuffers)(ImGuiTable *table);
+    void           (*TableGcCompactSettings)(void);
+    void           (*TableLoadSettings)(ImGuiTable *table);
+    void           (*TableSaveSettings)(ImGuiTable *table);
+    void           (*TableResetSettings)(ImGuiTable *table);
+    ImGuiTableSettings*  (*TableGetBoundSettings)(ImGuiTable *table);
+    void           (*TableSettingsInstallHandler)(ImGuiContext *context);
+    ImGuiTableSettings*  (*TableSettingsCreate)(ImGuiID id, int columns_count);
+    ImGuiTableSettings*  (*TableSettingsFindByID)(ImGuiID id);
     bool           (*BeginTabBarEx)(ImGuiTabBar *tab_bar, const ImRect bb, ImGuiTabBarFlags flags, ImGuiDockNode *dock_node);
     ImGuiTabItem*  (*TabBarFindTabByID)(ImGuiTabBar *tab_bar, ImGuiID tab_id);
     ImGuiTabItem*  (*TabBarFindMostRecentlySelectedTabForActiveWindow)(ImGuiTabBar *tab_bar);
     void           (*TabBarAddTab)(ImGuiTabBar *tab_bar, ImGuiTabItemFlags tab_flags, ImGuiWindow *window);
     void           (*TabBarRemoveTab)(ImGuiTabBar *tab_bar, ImGuiID tab_id);
     void           (*TabBarCloseTab)(ImGuiTabBar *tab_bar, ImGuiTabItem *tab);
-    void           (*TabBarQueueChangeTabOrder)(ImGuiTabBar *tab_bar, const ImGuiTabItem *tab, int dir);
+    void           (*TabBarQueueReorder)(ImGuiTabBar *tab_bar, const ImGuiTabItem *tab, int dir);
+    bool           (*TabBarProcessReorder)(ImGuiTabBar *tab_bar);
     bool           (*TabItemEx)(ImGuiTabBar *tab_bar, const char *label, bool *p_open, ImGuiTabItemFlags flags, ImGuiWindow *docked_window);
     void           (*TabItemCalcSize)(ImVec2 *pOut, const char *label, bool has_close_button);
     void           (*TabItemBackground)(ImDrawList *draw_list, const ImRect bb, ImGuiTabItemFlags flags, ImU32 col);
-    bool           (*TabItemLabelAndCloseButton)(ImDrawList *draw_list, const ImRect bb, ImGuiTabItemFlags flags, ImVec2 frame_padding, const char *label, ImGuiID tab_id, ImGuiID close_button_id);
+    void           (*TabItemLabelAndCloseButton)(ImDrawList *draw_list, const ImRect bb, ImGuiTabItemFlags flags, ImVec2 frame_padding, const char *label, ImGuiID tab_id, ImGuiID close_button_id, bool is_contents_visible, bool *out_just_closed, bool *out_text_clipped);
     void           (*RenderText)(ImVec2 pos, const char *text, const char *text_end, bool hide_text_after_hash);
     void           (*RenderTextWrapped)(ImVec2 pos, const char *text, const char *text_end, float wrap_width);
     void           (*RenderTextClipped)(const ImVec2 pos_min, const ImVec2 pos_max, const char *text, const char *text_end, const ImVec2 *text_size_if_known, const ImVec2 align, const ImRect *clip_rect);
@@ -2554,10 +3160,9 @@ typedef struct rizz_api_imgui
     void           (*RenderTextEllipsis)(ImDrawList *draw_list, const ImVec2 pos_min, const ImVec2 pos_max, float clip_max_x, float ellipsis_max_x, const char *text, const char *text_end, const ImVec2 *text_size_if_known);
     void           (*RenderFrame)(ImVec2 p_min, ImVec2 p_max, ImU32 fill_col, bool border, float rounding);
     void           (*RenderFrameBorder)(ImVec2 p_min, ImVec2 p_max, float rounding);
-    void           (*RenderColorRectWithAlphaCheckerboard)(ImDrawList *draw_list, ImVec2 p_min, ImVec2 p_max, ImU32 fill_col, float grid_step, ImVec2 grid_off, float rounding, int rounding_corners_flags);
+    void           (*RenderColorRectWithAlphaCheckerboard)(ImDrawList *draw_list, ImVec2 p_min, ImVec2 p_max, ImU32 fill_col, float grid_step, ImVec2 grid_off, float rounding, ImDrawFlags flags);
     void           (*RenderNavHighlight)(const ImRect bb, ImGuiID id, ImGuiNavHighlightFlags flags);
     const char*    (*FindRenderedTextEnd)(const char *text, const char *text_end);
-    void           (*LogRenderedText)(const ImVec2 *ref_pos, const char *text, const char *text_end);
     void           (*RenderArrow)(ImDrawList *draw_list, ImVec2 pos, ImU32 col, ImGuiDir dir, float scale);
     void           (*RenderBullet)(ImDrawList *draw_list, ImVec2 pos, ImU32 col);
     void           (*RenderCheckMark)(ImDrawList *draw_list, ImVec2 pos, ImU32 col, float sz);
@@ -2572,25 +3177,30 @@ typedef struct rizz_api_imgui
     bool           (*CollapseButton)(ImGuiID id, const ImVec2 pos, ImGuiDockNode *dock_node);
     bool           (*ArrowButtonEx)(const char *str_id, ImGuiDir dir, ImVec2 size_arg, ImGuiButtonFlags flags);
     void           (*Scrollbar)(ImGuiAxis axis);
-    bool           (*ScrollbarEx)(const ImRect bb, ImGuiID id, ImGuiAxis axis, float *p_scroll_v, float avail_v, float contents_v, ImDrawCornerFlags rounding_corners);
+    bool           (*ScrollbarEx)(const ImRect bb, ImGuiID id, ImGuiAxis axis, float *p_scroll_v, float avail_v, float contents_v, ImDrawFlags flags);
+    bool           (*ImageButtonEx)(ImGuiID id, ImTextureID texture_id, const ImVec2 size, const ImVec2 uv0, const ImVec2 uv1, const ImVec2 padding, const ImVec4 bg_col, const ImVec4 tint_col);
     void           (*GetWindowScrollbarRect)(ImRect *pOut, ImGuiWindow *window, ImGuiAxis axis);
     ImGuiID        (*GetWindowScrollbarID)(ImGuiWindow *window, ImGuiAxis axis);
     ImGuiID        (*GetWindowResizeID)(ImGuiWindow *window, int n);
     void           (*SeparatorEx)(ImGuiSeparatorFlags flags);
+    bool           (*CheckboxFlags_S64Ptr)(const char *label, ImS64 *flags, ImS64 flags_value);
+    bool           (*CheckboxFlags_U64Ptr)(const char *label, ImU64 *flags, ImU64 flags_value);
     bool           (*ButtonBehavior)(const ImRect bb, ImGuiID id, bool *out_hovered, bool *out_held, ImGuiButtonFlags flags);
-    bool           (*DragBehavior)(ImGuiID id, ImGuiDataType data_type, void *p_v, float v_speed, const void *p_min, const void *p_max, const char *format, float power, ImGuiDragFlags flags);
-    bool           (*SliderBehavior)(const ImRect bb, ImGuiID id, ImGuiDataType data_type, void *p_v, const void *p_min, const void *p_max, const char *format, float power, ImGuiSliderFlags flags, ImRect *out_grab_bb);
+    bool           (*DragBehavior)(ImGuiID id, ImGuiDataType data_type, void *p_v, float v_speed, const void *p_min, const void *p_max, const char *format, ImGuiSliderFlags flags);
+    bool           (*SliderBehavior)(const ImRect bb, ImGuiID id, ImGuiDataType data_type, void *p_v, const void *p_min, const void *p_max, const char *format, ImGuiSliderFlags flags, ImRect *out_grab_bb);
     bool           (*SplitterBehavior)(const ImRect bb, ImGuiID id, ImGuiAxis axis, float *size1, float *size2, float min_size1, float min_size2, float hover_extend, float hover_visibility_delay);
     bool           (*TreeNodeBehavior)(ImGuiID id, ImGuiTreeNodeFlags flags, const char *label, const char *label_end);
     bool           (*TreeNodeBehaviorIsOpen)(ImGuiID id, ImGuiTreeNodeFlags flags);
     void           (*TreePushOverrideID)(ImGuiID id);
     const ImGuiDataTypeInfo*  (*DataTypeGetInfo)(ImGuiDataType data_type);
     int            (*DataTypeFormatString)(char *buf, int buf_size, ImGuiDataType data_type, const void *p_data, const char *format);
-    void           (*DataTypeApplyOp)(ImGuiDataType data_type, int op, void *output, void *arg_1, const void *arg_2);
+    void           (*DataTypeApplyOp)(ImGuiDataType data_type, int op, void *output, const void *arg_1, const void *arg_2);
     bool           (*DataTypeApplyOpFromText)(const char *buf, const char *initial_value_buf, ImGuiDataType data_type, void *p_data, const char *format);
+    int            (*DataTypeCompare)(ImGuiDataType data_type, const void *arg_1, const void *arg_2);
+    bool           (*DataTypeClamp)(ImGuiDataType data_type, void *p_data, const void *p_min, const void *p_max);
     bool           (*InputTextEx)(const char *label, const char *hint, char *buf, int buf_size, const ImVec2 size_arg, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void *user_data);
     bool           (*TempInputText)(const ImRect bb, ImGuiID id, const char *label, char *buf, int buf_size, ImGuiInputTextFlags flags);
-    bool           (*TempInputScalar)(const ImRect bb, ImGuiID id, const char *label, ImGuiDataType data_type, void *p_data, const char *format);
+    bool           (*TempInputScalar)(const ImRect bb, ImGuiID id, const char *label, ImGuiDataType data_type, void *p_data, const char *format, const void *p_clamp_min, const void *p_clamp_max);
     bool           (*TempInputIsActive)(ImGuiID id);
     ImGuiInputTextState*  (*GetInputTextState)(ImGuiID id);
     void           (*ColorTooltip)(const char *text, const float *col, ImGuiColorEditFlags flags);
@@ -2599,21 +3209,37 @@ typedef struct rizz_api_imgui
     int            (*PlotEx)(ImGuiPlotType plot_type, const char *label, float (*values_getter)(void *data, int idx), void *data, int values_count, int values_offset, const char *overlay_text, float scale_min, float scale_max, ImVec2 frame_size);
     void           (*ShadeVertsLinearColorGradientKeepAlpha)(ImDrawList *draw_list, int vert_start_idx, int vert_end_idx, ImVec2 gradient_p0, ImVec2 gradient_p1, ImU32 col0, ImU32 col1);
     void           (*ShadeVertsLinearUV)(ImDrawList *draw_list, int vert_start_idx, int vert_end_idx, const ImVec2 a, const ImVec2 b, const ImVec2 uv_a, const ImVec2 uv_b, bool clamp);
+    void           (*GcCompactTransientMiscBuffers)(void);
     void           (*GcCompactTransientWindowBuffers)(ImGuiWindow *window);
     void           (*GcAwakeTransientWindowBuffers)(ImGuiWindow *window);
+    void           (*ErrorCheckEndFrameRecover)(ImGuiErrorLogCallback log_callback, void *user_data);
     void           (*DebugDrawItemRect)(ImU32 col);
     void           (*DebugStartItemPicker)(void);
-    bool           (*ImFontAtlasBuildWithStbTruetype)(ImFontAtlas *atlas);
+    void           (*DebugNodeColumns)(ImGuiOldColumns *columns);
+    void           (*DebugNodeDockNode)(ImGuiDockNode *node, const char *label);
+    void           (*DebugNodeDrawList)(ImGuiWindow *window, ImGuiViewportP *viewport, const ImDrawList *draw_list, const char *label);
+    void           (*DebugNodeDrawCmdShowMeshAndBoundingBox)(ImDrawList *out_draw_list, const ImDrawList *draw_list, const ImDrawCmd *draw_cmd, bool show_mesh, bool show_aabb);
+    void           (*DebugNodeStorage)(ImGuiStorage *storage, const char *label);
+    void           (*DebugNodeTabBar)(ImGuiTabBar *tab_bar, const char *label);
+    void           (*DebugNodeTable)(ImGuiTable *table);
+    void           (*DebugNodeTableSettings)(ImGuiTableSettings *settings);
+    void           (*DebugNodeWindow)(ImGuiWindow *window, const char *label);
+    void           (*DebugNodeWindowSettings)(ImGuiWindowSettings *settings);
+    void           (*DebugNodeWindowsList)(ImVector_ImGuiWindowPtr *windows, const char *label);
+    void           (*DebugNodeViewport)(ImGuiViewportP *viewport);
+    void           (*DebugRenderViewportThumbnail)(ImDrawList *draw_list, ImGuiViewportP *viewport, const ImRect bb);
+    const ImFontBuilderIO*  (*ImFontAtlasGetBuilderForStbTruetype)(void);
     void           (*ImFontAtlasBuildInit)(ImFontAtlas *atlas);
     void           (*ImFontAtlasBuildSetupFont)(ImFontAtlas *atlas, ImFont *font, ImFontConfig *font_config, float ascent, float descent);
     void           (*ImFontAtlasBuildPackCustomRects)(ImFontAtlas *atlas, void *stbrp_context_opaque);
     void           (*ImFontAtlasBuildFinish)(ImFontAtlas *atlas);
+    void           (*ImFontAtlasBuildRender8bppRectFromString)(ImFontAtlas *atlas, int x, int y, int w, int h, const char *in_str, char in_marker_char, unsigned char in_marker_pixel_value);
+    void           (*ImFontAtlasBuildRender32bppRectFromString)(ImFontAtlas *atlas, int x, int y, int w, int h, const char *in_str, char in_marker_char, unsigned int in_marker_pixel_value);
     void           (*ImFontAtlasBuildMultiplyCalcLookupTable)(unsigned char out_table[256], float in_multiply_factor);
     void           (*ImFontAtlasBuildMultiplyRectAlpha8)(const unsigned char table[256], unsigned char *pixels, int x, int y, int w, int h, int stride);
     void           (*LogText)(const char *fmt, ...);
     float          (*GET_FLT_MAX)();
-    void           (*ColorConvertRGBtoHSV)(float r, float g, float b, float *out_h, float *out_s, float *out_v);
-    void           (*ColorConvertHSVtoRGB)(float h, float s, float v, float *out_r, float *out_g, float *out_b);
+    float          (*GET_FLT_MIN)();
     // ImGuiIO
     void           (*ImGuiIO_AddInputCharacter)(ImGuiIO *self, unsigned int c);
     void           (*ImGuiIO_AddInputCharacterUTF16)(ImGuiIO *self, ImWchar16 c);
@@ -2632,8 +3258,8 @@ typedef struct rizz_api_imgui
     void           (*ImDrawList_GetClipRectMin)(ImVec2 *pOut, ImDrawList *self);
     void           (*ImDrawList_GetClipRectMax)(ImVec2 *pOut, ImDrawList *self);
     void           (*ImDrawList_AddLine)(ImDrawList *self, const ImVec2 p1, const ImVec2 p2, ImU32 col, float thickness);
-    void           (*ImDrawList_AddRect)(ImDrawList *self, const ImVec2 p_min, const ImVec2 p_max, ImU32 col, float rounding, ImDrawCornerFlags rounding_corners, float thickness);
-    void           (*ImDrawList_AddRectFilled)(ImDrawList *self, const ImVec2 p_min, const ImVec2 p_max, ImU32 col, float rounding, ImDrawCornerFlags rounding_corners);
+    void           (*ImDrawList_AddRect)(ImDrawList *self, const ImVec2 p_min, const ImVec2 p_max, ImU32 col, float rounding, ImDrawFlags flags, float thickness);
+    void           (*ImDrawList_AddRectFilled)(ImDrawList *self, const ImVec2 p_min, const ImVec2 p_max, ImU32 col, float rounding, ImDrawFlags flags);
     void           (*ImDrawList_AddRectFilledMultiColor)(ImDrawList *self, const ImVec2 p_min, const ImVec2 p_max, ImU32 col_upr_left, ImU32 col_upr_right, ImU32 col_bot_right, ImU32 col_bot_left);
     void           (*ImDrawList_AddQuad)(ImDrawList *self, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, ImU32 col, float thickness);
     void           (*ImDrawList_AddQuadFilled)(ImDrawList *self, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, ImU32 col);
@@ -2643,31 +3269,31 @@ typedef struct rizz_api_imgui
     void           (*ImDrawList_AddCircleFilled)(ImDrawList *self, const ImVec2 center, float radius, ImU32 col, int num_segments);
     void           (*ImDrawList_AddNgon)(ImDrawList *self, const ImVec2 center, float radius, ImU32 col, int num_segments, float thickness);
     void           (*ImDrawList_AddNgonFilled)(ImDrawList *self, const ImVec2 center, float radius, ImU32 col, int num_segments);
-    void           (*ImDrawList_AddTextVec2)(ImDrawList *self, const ImVec2 pos, ImU32 col, const char *text_begin, const char *text_end);
-    void           (*ImDrawList_AddTextFontPtr)(ImDrawList *self, const ImFont *font, float font_size, const ImVec2 pos, ImU32 col, const char *text_begin, const char *text_end, float wrap_width, const ImVec4 *cpu_fine_clip_rect);
-    void           (*ImDrawList_AddPolyline)(ImDrawList *self, const ImVec2 *points, int num_points, ImU32 col, bool closed, float thickness);
+    void           (*ImDrawList_AddText_Vec2)(ImDrawList *self, const ImVec2 pos, ImU32 col, const char *text_begin, const char *text_end);
+    void           (*ImDrawList_AddText_FontPtr)(ImDrawList *self, const ImFont *font, float font_size, const ImVec2 pos, ImU32 col, const char *text_begin, const char *text_end, float wrap_width, const ImVec4 *cpu_fine_clip_rect);
+    void           (*ImDrawList_AddPolyline)(ImDrawList *self, const ImVec2 *points, int num_points, ImU32 col, ImDrawFlags flags, float thickness);
     void           (*ImDrawList_AddConvexPolyFilled)(ImDrawList *self, const ImVec2 *points, int num_points, ImU32 col);
-    void           (*ImDrawList_AddBezierCurve)(ImDrawList *self, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, ImU32 col, float thickness, int num_segments);
+    void           (*ImDrawList_AddBezierCubic)(ImDrawList *self, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, ImU32 col, float thickness, int num_segments);
+    void           (*ImDrawList_AddBezierQuadratic)(ImDrawList *self, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, ImU32 col, float thickness, int num_segments);
     void           (*ImDrawList_AddImage)(ImDrawList *self, ImTextureID user_texture_id, const ImVec2 p_min, const ImVec2 p_max, const ImVec2 uv_min, const ImVec2 uv_max, ImU32 col);
     void           (*ImDrawList_AddImageQuad)(ImDrawList *self, ImTextureID user_texture_id, const ImVec2 p1, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, const ImVec2 uv1, const ImVec2 uv2, const ImVec2 uv3, const ImVec2 uv4, ImU32 col);
-    void           (*ImDrawList_AddImageRounded)(ImDrawList *self, ImTextureID user_texture_id, const ImVec2 p_min, const ImVec2 p_max, const ImVec2 uv_min, const ImVec2 uv_max, ImU32 col, float rounding, ImDrawCornerFlags rounding_corners);
+    void           (*ImDrawList_AddImageRounded)(ImDrawList *self, ImTextureID user_texture_id, const ImVec2 p_min, const ImVec2 p_max, const ImVec2 uv_min, const ImVec2 uv_max, ImU32 col, float rounding, ImDrawFlags flags);
     void           (*ImDrawList_PathClear)(ImDrawList *self);
     void           (*ImDrawList_PathLineTo)(ImDrawList *self, const ImVec2 pos);
     void           (*ImDrawList_PathLineToMergeDuplicate)(ImDrawList *self, const ImVec2 pos);
     void           (*ImDrawList_PathFillConvex)(ImDrawList *self, ImU32 col);
-    void           (*ImDrawList_PathStroke)(ImDrawList *self, ImU32 col, bool closed, float thickness);
+    void           (*ImDrawList_PathStroke)(ImDrawList *self, ImU32 col, ImDrawFlags flags, float thickness);
     void           (*ImDrawList_PathArcTo)(ImDrawList *self, const ImVec2 center, float radius, float a_min, float a_max, int num_segments);
     void           (*ImDrawList_PathArcToFast)(ImDrawList *self, const ImVec2 center, float radius, int a_min_of_12, int a_max_of_12);
-    void           (*ImDrawList_PathBezierCurveTo)(ImDrawList *self, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, int num_segments);
-    void           (*ImDrawList_PathRect)(ImDrawList *self, const ImVec2 rect_min, const ImVec2 rect_max, float rounding, ImDrawCornerFlags rounding_corners);
+    void           (*ImDrawList_PathBezierCubicCurveTo)(ImDrawList *self, const ImVec2 p2, const ImVec2 p3, const ImVec2 p4, int num_segments);
+    void           (*ImDrawList_PathBezierQuadraticCurveTo)(ImDrawList *self, const ImVec2 p2, const ImVec2 p3, int num_segments);
+    void           (*ImDrawList_PathRect)(ImDrawList *self, const ImVec2 rect_min, const ImVec2 rect_max, float rounding, ImDrawFlags flags);
     void           (*ImDrawList_AddCallback)(ImDrawList *self, ImDrawCallback callback, void *callback_data);
     void           (*ImDrawList_AddDrawCmd)(ImDrawList *self);
     ImDrawList*    (*ImDrawList_CloneOutput)(ImDrawList *self);
     void           (*ImDrawList_ChannelsSplit)(ImDrawList *self, int count);
     void           (*ImDrawList_ChannelsMerge)(ImDrawList *self);
     void           (*ImDrawList_ChannelsSetCurrent)(ImDrawList *self, int n);
-    void           (*ImDrawList_Clear)(ImDrawList *self);
-    void           (*ImDrawList_ClearFreeMemory)(ImDrawList *self);
     void           (*ImDrawList_PrimReserve)(ImDrawList *self, int idx_count, int vtx_count);
     void           (*ImDrawList_PrimUnreserve)(ImDrawList *self, int idx_count, int vtx_count);
     void           (*ImDrawList_PrimRect)(ImDrawList *self, const ImVec2 a, const ImVec2 b, ImU32 col);
@@ -2676,8 +3302,15 @@ typedef struct rizz_api_imgui
     void           (*ImDrawList_PrimWriteVtx)(ImDrawList *self, const ImVec2 pos, const ImVec2 uv, ImU32 col);
     void           (*ImDrawList_PrimWriteIdx)(ImDrawList *self, ImDrawIdx idx);
     void           (*ImDrawList_PrimVtx)(ImDrawList *self, const ImVec2 pos, const ImVec2 uv, ImU32 col);
-    void           (*ImDrawList_UpdateClipRect)(ImDrawList *self);
-    void           (*ImDrawList_UpdateTextureID)(ImDrawList *self);
+    void           (*ImDrawList__ResetForNewFrame)(ImDrawList *self);
+    void           (*ImDrawList__ClearFreeMemory)(ImDrawList *self);
+    void           (*ImDrawList__PopUnusedDrawCmd)(ImDrawList *self);
+    void           (*ImDrawList__OnChangedClipRect)(ImDrawList *self);
+    void           (*ImDrawList__OnChangedTextureID)(ImDrawList *self);
+    void           (*ImDrawList__OnChangedVtxOffset)(ImDrawList *self);
+    int            (*ImDrawList__CalcCircleAutoSegmentCount)(ImDrawList *self, float radius);
+    void           (*ImDrawList__PathArcToFastEx)(ImDrawList *self, const ImVec2 center, float radius, int a_min_sample, int a_max_sample, int a_step);
+    void           (*ImDrawList__PathArcToN)(ImDrawList *self, const ImVec2 center, float radius, float a_min, float a_max, int num_segments);
     // ImDrawList
     ImFont*        (*ImFont_ImFont)(void);
     void           (*ImFont_destroy)(ImFont *self);
@@ -2693,7 +3326,7 @@ typedef struct rizz_api_imgui
     void           (*ImFont_BuildLookupTable)(ImFont *self);
     void           (*ImFont_ClearOutputData)(ImFont *self);
     void           (*ImFont_GrowIndex)(ImFont *self, int new_size);
-    void           (*ImFont_AddGlyph)(ImFont *self, ImWchar c, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, float advance_x);
+    void           (*ImFont_AddGlyph)(ImFont *self, const ImFontConfig *src_cfg, ImWchar c, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, float advance_x);
     void           (*ImFont_AddRemapChar)(ImFont *self, ImWchar dst, ImWchar src, bool overwrite_dst);
     void           (*ImFont_SetGlyphVisible)(ImFont *self, ImWchar c, bool visible);
     void           (*ImFont_SetFallbackChar)(ImFont *self, ImWchar c);
@@ -2724,9 +3357,9 @@ typedef struct rizz_api_imgui
     const ImWchar*  (*ImFontAtlas_GetGlyphRangesCyrillic)(ImFontAtlas *self);
     const ImWchar*  (*ImFontAtlas_GetGlyphRangesThai)(ImFontAtlas *self);
     const ImWchar*  (*ImFontAtlas_GetGlyphRangesVietnamese)(ImFontAtlas *self);
-    int            (*ImFontAtlas_AddCustomRectRegular)(ImFontAtlas *self, unsigned int id, int width, int height);
+    int            (*ImFontAtlas_AddCustomRectRegular)(ImFontAtlas *self, int width, int height);
     int            (*ImFontAtlas_AddCustomRectFontGlyph)(ImFontAtlas *self, ImFont *font, ImWchar id, int width, int height, float advance_x, const ImVec2 offset);
-    const ImFontAtlasCustomRect*  (*ImFontAtlas_GetCustomRectByIndex)(ImFontAtlas *self, int index);
+    ImFontAtlasCustomRect*  (*ImFontAtlas_GetCustomRectByIndex)(ImFontAtlas *self, int index);
     void           (*ImFontAtlas_CalcCustomRectUV)(ImFontAtlas *self, const ImFontAtlasCustomRect *rect, ImVec2 *out_uv_min, ImVec2 *out_uv_max);
     bool           (*ImFontAtlas_GetMouseCursorTexData)(ImFontAtlas *self, ImGuiMouseCursor cursor, ImVec2 *out_offset, ImVec2 *out_size, ImVec2 out_uv_border[2], ImVec2 out_uv_fill[2]);
     // ImGuiPayload
@@ -2737,11 +3370,11 @@ typedef struct rizz_api_imgui
     bool           (*ImGuiPayload_IsPreview)(ImGuiPayload *self);
     bool           (*ImGuiPayload_IsDelivery)(ImGuiPayload *self);
     // ImGuiListClipper
-    ImGuiListClipper*  (*ImGuiListClipper_ImGuiListClipper)(int items_count, float items_height);
+    ImGuiListClipper*  (*ImGuiListClipper_ImGuiListClipper)(void);
     void           (*ImGuiListClipper_destroy)(ImGuiListClipper *self);
-    bool           (*ImGuiListClipper_Step)(ImGuiListClipper *self);
     void           (*ImGuiListClipper_Begin)(ImGuiListClipper *self, int items_count, float items_height);
     void           (*ImGuiListClipper_End)(ImGuiListClipper *self);
+    bool           (*ImGuiListClipper_Step)(ImGuiListClipper *self);
     // ImGuiTextFilter
     ImGuiTextFilter*  (*ImGuiTextFilter_ImGuiTextFilter)(const char *default_filter);
     void           (*ImGuiTextFilter_destroy)(ImGuiTextFilter *self);
@@ -2764,3 +3397,5 @@ typedef struct rizz_api_imgui
     void           (*ImGuiTextBuffer_appendfv)(ImGuiTextBuffer *self, const char *fmt, va_list args);
     void           (*ImGuiTextBuffer_appendf)(struct ImGuiTextBuffer *buffer, const char *fmt, ...);
 } rizz_api_imgui;
+
+

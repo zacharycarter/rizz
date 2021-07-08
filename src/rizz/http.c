@@ -15,6 +15,8 @@
 SX_PRAGMA_DIAGNOSTIC_PUSH()
 SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG_GCC("-Wunused-variable")
 SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG("-Wshorten-64-to-32")
+SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG("-Wsign-compare")    // clang/win: comparison of different signs
+SX_PRAGMA_DIAGNOSTIC_IGNORED_MSVC(5105)
 #if SX_PLATFORM_ANDROID
 #    include <linux/in.h>
 #endif
@@ -99,7 +101,7 @@ void rizz__http_update()
         http_status_t status = http_process(http->h);
         if (status != HTTP_STATUS_PENDING && http->callback) {
             http->callback((const rizz_http_state*)http->h, http->callback_user);
-            sx_assert(http->h && "must not `free` inside callback");
+            sx_assertf(http->h, "must not `free` inside callback");
             http_release(http->h);
             http->h = NULL;
 
@@ -236,7 +238,7 @@ static void rizz__http_free(rizz_http handle)
 
     sx_assert(handle.id);
     rizz__http* http = &g_http.https[sx_handle_index(handle.id)];
-    sx_assert(http->h && "double free?");
+    sx_assertf(http->h, "double free?");
     http_release(http->h);
     http->h = NULL;
 

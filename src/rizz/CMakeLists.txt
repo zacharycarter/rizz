@@ -14,18 +14,18 @@ set(SOURCE_FILES internal.h
                  android.c
                  basisut.cpp 
                  basisut.h 
-                 json.c)
+                 json.c 
+                 windows.cpp 
+                 memory.c)
 
 set(INCLUDE_FILES ../../include/rizz/config.h
                   ../../include/rizz/sg-types.h
-                  ../../include/rizz/util.h
                   ../../include/rizz/json.h 
                   ../../include/rizz/android.h
                   ../../include/rizz/ios.h 
                   ../../include/rizz/rizz.h)
 
-set(TEXT_FILES  ../../README.md
-                ../../CHANGES.md)
+set(TEXT_FILES  ../../README.md)
 
 set(EXTERNAL_INCLUDES ../../3rdparty/sokol/sokol_app.h 
                       ../../3rdparty/sokol/sokol_gfx.h
@@ -36,7 +36,8 @@ set(EXTERNAL_INCLUDES ../../3rdparty/sokol/sokol_app.h
                       ../../3rdparty/stb/stb_image_resize.h
                       ../../3rdparty/sort/sort.h
                       ../../3rdparty/mattias/http.h 
-                      ../../include/dmon/dmon.h)
+                      ../../include/dmon/dmon.h 
+                      ../../include/stackwalkerc/stackwalkerc.h)
 
 if (APPLE)
     set_source_files_properties(app.c graphics.c PROPERTIES COMPILE_FLAGS "-fobjc-arc -fmodules -x objective-c") 
@@ -44,6 +45,13 @@ endif()
 
 if (IOS)
     list(APPEND SOURCE_FILES ios.m)
+endif()
+
+# FIXME: due to some bug in msvc or cmake, I have to set this for all sources
+if (MSVC)
+    if (${MSVC_VERSION} GREATER_EQUAL 1928)
+        set_source_files_properties(${SOURCE_FILES} PROPERTIES COMPILE_OPTIONS /std:c17)
+    endif()
 endif()
 
 # bundle: make static lib to link it to the game.exe later
@@ -92,5 +100,6 @@ elseif (RPI)
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     target_link_libraries(rizz PRIVATE flextGL X11 GL)
 elseif (WIN32)
-    target_link_libraries(rizz PRIVATE dxgi d3d11)
+    # TODO: eventually remove DbgHelp, that one should be optional and loaded from system paths
+    target_link_libraries(rizz PRIVATE dxgi d3d11 Version)  
 endif()
